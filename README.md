@@ -4,6 +4,8 @@ AI coding agent와 함께 명세 기반 개발을 진행하고, 구현이 끝난
 
 이 저장소는 특정 제품의 자동화 도구가 아니다. Agent가 반복 작업을 비슷한 절차로 수행하도록 안내하는 Markdown 기반 가이드다.
 
+> **English summary:** An experimental, Markdown-based kit for staged SDD scaffolding and PR-time business documentation updates. It was first tested on a legacy Java/Spring application and is intended to be adapted to each repository's entrypoints, call layers, and documentation conventions. The Skill instructions are currently written in Korean.
+
 ## 포함된 Skill
 
 | Skill | 사용 시점 | 역할 |
@@ -23,6 +25,7 @@ AI coding agent와 함께 명세 기반 개발을 진행하고, 구현이 끝난
 ## 현재 검증 상태
 
 - `sdd-doc-scaffold`: 파일 구성과 문서 연결 구조를 반복 생성해봤다. 강한 예시 값이 그대로 복사될 수 있어 템플릿에는 치환 자리만 남겼다.
+- `sdd-doc-scaffold`는 Stage마다 다시 호출할 수 있다. Stage 완료는 파일 상태가 아니라 사용자의 명시적인 확인으로 판정한다.
 - `pr-business-docs`: diff에서 시작해 공유 호출 체인의 다른 진입점까지 확장하고, 저장 전 근거 대조로 잘못된 초안을 발견한 경험을 반영했다.
 - 기존 문서의 부분 갱신을 기본값으로 두었지만, 같은 방식이 장기간 정보 손실 없이 반복되는지는 더 확인이 필요하다.
 - Skill 사용 비용이 매번 코드를 다시 탐색하는 비용보다 항상 작다고 확인한 것은 아니다.
