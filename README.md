@@ -4,7 +4,7 @@ AI coding agent와 함께 명세 기반 개발을 진행하고, 구현이 끝난
 
 이 저장소는 특정 제품의 자동화 도구가 아니다. Agent가 반복 작업을 비슷한 절차로 수행하도록 안내하는 Markdown 기반 가이드다.
 
-> **English summary:** An experimental, Markdown-based kit for staged SDD scaffolding and PR-time business documentation updates. It was first tested on a legacy Java/Spring application and is intended to be adapted to each repository's entrypoints, call layers, and documentation conventions. The Skill instructions are currently written in Korean.
+> An experimental, Markdown-based kit for staged SDD scaffolding and PR-time business documentation updates. It was first tested on a legacy Java/Spring application and is intended to be adapted to each repository's entrypoints, call layers, and documentation conventions. The Skill instructions are currently written in Korean.
 
 ## 포함된 Skill
 
