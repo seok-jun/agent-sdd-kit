@@ -25,6 +25,7 @@ AI coding agent와 함께 명세 기반 개발을 진행하고, 구현이 끝난
 ## 현재 검증 상태
 
 - `sdd-doc-scaffold`: 파일 구성, TODO 문구, 문서 관계 표를 고정했다. 실제 feature, 코드 경로, 작업 ID는 치환 자리로 남겨 강한 예시 값이 복사되지 않게 했다.
+- `sdd-doc-scaffold`의 본문에는 등급·게이트·Stage 절차만 두고, `Medium` 이상에서 현재 Stage가 확정된 뒤 공통 규칙과 해당 Stage 템플릿만 reference에서 읽는다.
 - `sdd-doc-scaffold`는 Stage마다 다시 호출할 수 있다. 골격 생성 뒤의 코드 조사와 내용 작성은 같은 에이전트 또는 후속 세션의 일반 작업으로 수행하고, Stage 완료는 사용자의 명시적인 확인으로 판정한다.
 - Stage 3 진입은 as-is 분석과 to-be 설계 및 change plan이 작성되고 사용자 확인까지 끝났다는 의미다.
 - `pr-business-docs`: diff에서 시작해 공유 호출 체인의 다른 진입점까지 확장하고, 저장 전 근거 대조로 잘못된 초안을 발견한 경험을 반영했다.
