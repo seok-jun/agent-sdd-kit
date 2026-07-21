@@ -1,0 +1,90 @@
+{
+  "skill": "sdd-doc-scaffold",
+  "version": 1,
+  "cases": [
+    {
+      "id": "trigger-explicit-scaffold",
+      "category": "trigger",
+      "query": "sdd-doc-scaffold를 사용해서 결제 오류 복구 작업의 SDD 문서 골격을 만들어줘.",
+      "expected": {
+        "should_trigger": true,
+        "behaviors": [
+          "코드나 저장소를 조사하지 않고 작업 등급 후보를 제안한다",
+          "사용자 확인 전에는 파일을 생성하지 않는다",
+          "현재 Stage에서 필요한 입력값과 생성 예정 구조를 먼저 제시한다"
+        ]
+      }
+    },
+    {
+      "id": "trigger-implicit-sdd-start",
+      "category": "trigger",
+      "query": "레거시 주문 취소 로직을 SDD 방식으로 분석부터 설계, 구현 백로그까지 단계적으로 시작하자.",
+      "expected": {
+        "should_trigger": true,
+        "behaviors": [
+          "작업 등급을 먼저 판정한다",
+          "Stage를 한 번에 건너뛰지 않는다"
+        ]
+      }
+    },
+    {
+      "id": "no-trigger-usage-analysis-regression",
+      "category": "non-trigger",
+      "query": "내 Codex 사용 패턴을 분석해서 장단점을 알려줘.",
+      "expected": {
+        "should_trigger": false,
+        "behaviors": [
+          "SDD 문서 생성이나 Stage 절차를 시작하지 않는다"
+        ]
+      }
+    },
+    {
+      "id": "no-trigger-simple-code-fix",
+      "category": "non-trigger",
+      "query": "NullPointerException 원인을 찾아서 해당 메서드만 수정해줘.",
+      "expected": {
+        "should_trigger": false,
+        "behaviors": [
+          "사용자가 SDD 방식이나 문서 산출물을 요구하지 않았으므로 Skill을 강제 적용하지 않는다"
+        ]
+      }
+    },
+    {
+      "id": "small-no-files",
+      "category": "procedure",
+      "query": "오타 한 줄 수정 작업이야. sdd-doc-scaffold로 기록해줘.",
+      "expected": {
+        "should_trigger": true,
+        "behaviors": [
+          "Trivial 또는 Small 후보를 제시한다",
+          "새 Markdown 파일을 만들지 않는다",
+          "기존 작업 표면이나 채팅에 최소 기록만 남긴다"
+        ]
+      }
+    },
+    {
+      "id": "stage-gate-block",
+      "category": "procedure",
+      "query": "Stage 1 완료 확인은 아직 안 했지만 Stage 2 change plan 골격부터 만들어줘.",
+      "expected": {
+        "should_trigger": true,
+        "behaviors": [
+          "Stage 1 완료에 대한 사용자의 명시적 확인이 없으므로 Stage 2 생성을 거부한다",
+          "파일 존재 여부로 완료를 추측하지 않는다"
+        ]
+      }
+    },
+    {
+      "id": "no-repository-discovery",
+      "category": "procedure",
+      "query": "Medium 작업으로 시작해줘. feature는 payment-recovery야. 나머지는 저장소에서 알아서 찾아.",
+      "expected": {
+        "should_trigger": true,
+        "behaviors": [
+          "관련 코드 범위와 기준 ref를 저장소에서 조사하지 않는다",
+          "누락된 입력값을 사용자에게 확인한다"
+        ]
+      }
+    }
+  ]
+}
