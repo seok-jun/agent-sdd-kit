@@ -32,6 +32,24 @@ AI coding agent와 함께 명세 기반 개발을 진행하고, 구현이 끝난
 - 기존 문서의 부분 갱신을 기본값으로 두었지만, 같은 방식이 장기간 정보 손실 없이 반복되는지는 더 확인이 필요하다.
 - Skill 사용 비용이 매번 코드를 다시 탐색하는 비용보다 항상 작다고 확인한 것은 아니다.
 
+## Skill Eval
+
+`evals/`에는 각 Skill의 대표 입력과 기대 동작을 JSON으로 관리한다. Eval은 세 종류로 나눈다.
+
+- `trigger`: Skill이 선택되어야 하는 요청
+- `non-trigger`: 비슷해 보이지만 Skill이 선택되면 안 되는 요청
+- `procedure`: Skill이 선택된 뒤 반드시 지켜야 하는 절차와 금지 조건
+
+현재 Eval에는 실제 사용 중 발견한 `내 Codex 사용 패턴을 분석해줘` 요청에서 `sdd-doc-scaffold`가 잘못 실행된 사례를 회귀 테스트로 포함했다.
+
+```bash
+python scripts/validate_evals.py
+```
+
+이 명령은 JSON 형식, 필수 필드, 중복 ID, 카테고리와 `should_trigger`의 정합성을 검사한다. GitHub Actions도 PR과 `main` push에서 같은 검증을 수행한다.
+
+이 저장소는 특정 Agent의 통합 Eval 실행기를 제공하지 않는다. 실제 모델 평가는 `query`를 대상 Agent에 입력한 뒤 `expected.should_trigger`와 `expected.behaviors`를 기준으로 수동 또는 별도 러너에서 채점한다. Skill 설명이나 절차를 바꿀 때는 기존 Eval을 먼저 실행하고, 새로 발견한 실패 사례를 케이스로 추가한다.
+
 ## 설치
 
 사용하는 Agent가 지원하는 Skill 디렉터리에 필요한 폴더 하나를 그대로 복사한다.
