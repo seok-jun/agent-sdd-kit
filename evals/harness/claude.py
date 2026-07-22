@@ -8,6 +8,7 @@ from .core import AgentResult, run_process
 
 
 ALLOWED_TOOLS = [
+    "Skill",
     "Read",
     "Glob",
     "Grep",
@@ -24,19 +25,24 @@ ALLOWED_TOOLS = [
 def build_command(prompt: str, model: str | None = None) -> list[str]:
     command = [
         "claude",
-        "--print",
+        "-p",
+        prompt,
         "--output-format",
         "stream-json",
         "--verbose",
         "--no-session-persistence",
         "--permission-mode",
         "dontAsk",
+        "--setting-sources",
+        "project",
+        "--strict-mcp-config",
+        "--tools",
+        "Skill,Read,Glob,Grep,Edit,Write,Bash",
         "--allowedTools",
         *ALLOWED_TOOLS,
     ]
     if model:
         command.extend(["--model", model])
-    command.append(prompt)
     return command
 
 
