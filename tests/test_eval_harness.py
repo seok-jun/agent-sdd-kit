@@ -48,6 +48,7 @@ class HarnessTests(unittest.TestCase):
         self.assertIn("--ignore-rules", command)
         self.assertNotIn("--full-auto", command)
         self.assertIn("gpt-test", command)
+        self.assertNotIn("test prompt", command)
 
     def test_codex_command_pins_default_model(self) -> None:
         command = codex.build_command("test prompt")
@@ -79,6 +80,25 @@ class HarnessTests(unittest.TestCase):
         self.assertIs(mocked.call_args.kwargs["stdin"], subprocess.DEVNULL)
         self.assertEqual(mocked.call_args.kwargs["encoding"], "utf-8")
         self.assertEqual(mocked.call_args.kwargs["errors"], "replace")
+
+    def test_run_process_sends_unicode_input_as_utf8_stdin(self) -> None:
+        completed = SimpleNamespace(returncode=0, stdout="out", stderr="")
+        prompt = "$sdd-doc-scaffold Skill을 사용해서 문서 골격을 만들어줘."
+        with (
+            patch(
+                "evals.harness.core.shutil.which",
+                return_value=r"C:\\tools\\codex.cmd",
+            ),
+            patch("evals.harness.core.subprocess.run", return_value=completed) as mocked,
+        ):
+            run_process(["codex", "exec"], Path("."), 10, input_text=prompt)
+        self.assertEqual(
+            mocked.call_args.args[0],
+            [r"C:\\tools\\codex.cmd", "exec"],
+        )
+        self.assertEqual(mocked.call_args.kwargs["input"], prompt)
+        self.assertNotIn("stdin", mocked.call_args.kwargs)
+        self.assertEqual(mocked.call_args.kwargs["encoding"], "utf-8")
 
     def test_run_process_reports_missing_cli(self) -> None:
         with patch("evals.harness.core.shutil.which", return_value=None):

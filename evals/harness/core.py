@@ -51,24 +51,32 @@ class RunContext:
 Check = Callable[[RunContext], CheckResult]
 
 
-def run_process(command: list[str], cwd: Path, timeout: int) -> tuple[int, str, str, bool]:
+def run_process(
+    command: list[str],
+    cwd: Path,
+    timeout: int,
+    input_text: str | None = None,
+) -> tuple[int, str, str, bool]:
     executable = shutil.which(command[0])
     if executable is None:
         raise FileNotFoundError(f"CLI not found: {command[0]}")
     resolved_command = [executable, *command[1:]]
     try:
-        completed = subprocess.run(
-            resolved_command,
-            cwd=cwd,
-            capture_output=True,
-            stdin=subprocess.DEVNULL,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            check=False,
-            env={**os.environ, "NO_COLOR": "1"},
-        )
+        process_options: dict[str, Any] = {
+            "cwd": cwd,
+            "capture_output": True,
+            "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+            "timeout": timeout,
+            "check": False,
+            "env": {**os.environ, "NO_COLOR": "1"},
+        }
+        if input_text is None:
+            process_options["stdin"] = subprocess.DEVNULL
+        else:
+            process_options["input"] = input_text
+        completed = subprocess.run(resolved_command, **process_options)
         return completed.returncode, completed.stdout, completed.stderr, False
     except subprocess.TimeoutExpired as exc:
         stdout = (

@@ -13,6 +13,8 @@ DEFAULT_MODEL = "gpt-5.6"
 
 
 def build_command(prompt: str, model: str | None = None) -> list[str]:
+    # The prompt is intentionally sent through UTF-8 stdin in run(). Passing
+    # Korean text through an npm .cmd shim can corrupt argv on Windows/CP949.
     command = [
         "codex",
         "exec",
@@ -23,7 +25,6 @@ def build_command(prompt: str, model: str | None = None) -> list[str]:
         "--ignore-rules",
     ]
     command.extend(["--model", model or DEFAULT_MODEL])
-    command.append(prompt)
     return command
 
 
@@ -138,7 +139,9 @@ def run(
     if not skill:
         raise ValueError("Codex adapter requires the target skill name")
     command = build_command(prompt, model)
-    exit_code, stdout, stderr, timed_out = run_process(command, workspace, timeout)
+    exit_code, stdout, stderr, timed_out = run_process(
+        command, workspace, timeout, input_text=prompt
+    )
     response, tool_trace, usage, rollout, adapter_errors = _parse(stdout, skill)
     return AgentResult(
         command=command,
