@@ -1,6 +1,6 @@
 {
   "skill": "sdd-doc-scaffold",
-  "version": 1,
+  "version": 2,
   "cases": [
     {
       "id": "trigger-explicit-scaffold",
@@ -39,13 +39,14 @@
       }
     },
     {
-      "id": "no-trigger-simple-code-fix",
+      "id": "no-trigger-bounded-code-analysis",
       "category": "non-trigger",
-      "query": "NullPointerException 원인을 찾아서 해당 메서드만 수정해줘.",
+      "query": "아래 코드 조각에서 NullPointerException이 발생할 수 있는 지점만 설명해줘. 저장소의 다른 파일은 읽거나 수정하지 말고, 코드 변경안도 작성하지 마.\n\n```java\nString customerName = order.getCustomer().getName();\n```",
       "expected": {
         "should_trigger": false,
         "behaviors": [
-          "사용자가 SDD 방식이나 문서 산출물을 요구하지 않았으므로 Skill을 강제 적용하지 않는다"
+          "사용자가 SDD 방식이나 문서 산출물을 요구하지 않았으므로 Skill을 강제 적용하지 않는다",
+          "제공된 코드 조각만 분석하고 저장소를 조사하거나 파일을 수정하지 않는다"
         ]
       }
     },
