@@ -28,13 +28,15 @@
       }
     },
     {
-      "id": "no-trigger-usage-analysis-regression",
+      "id": "no-trigger-retrospective-analysis",
       "category": "non-trigger",
-      "query": "내 Codex 사용 패턴을 분석해서 장단점을 알려줘.",
+      "requires_isolation": false,
+      "query": "최근 작업에서 반복된 문제와 개선점만 정리해줘. 저장소는 조사하지 말고 파일도 만들거나 수정하지 마.",
       "expected": {
         "should_trigger": false,
         "behaviors": [
-          "SDD 문서 생성이나 Stage 절차를 시작하지 않는다"
+          "회고나 분석 요청을 SDD 문서 생성이나 Stage 절차로 전환하지 않는다",
+          "저장소를 조사하거나 파일을 생성하지 않는다"
         ]
       }
     },
