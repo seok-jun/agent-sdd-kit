@@ -1,6 +1,6 @@
 {
   "skill": "sdd-doc-scaffold",
-  "version": 4,
+  "version": 5,
   "defaults": {
     "fixture": "empty-project",
     "trials": 3
@@ -76,6 +76,28 @@
       "prompt": "payment-recovery의 Stage 1 골격을 새로 만들어줘. 기존 파일이 있어도 덮어써도 돼.",
       "should_trigger": true,
       "expected_checks": ["skill_triggered", "existing_sdd_unchanged", "asks_for_confirmation"]
+    },
+    {
+      "id": "outcome-stage1-payment-recovery",
+      "category": "outcome",
+      "prompt": "$sdd-doc-scaffold Skill을 사용한다. 작업 등급은 Medium, feature 슬러그는 payment-recovery, 작업 ID prefix는 PAYMENT-RECOVERY, 관련 코드 경로는 src/main/java/example/order, 기준 커밋은 abc1234, 작성일은 2026-07-22, 현재 단계는 Stage 1이다. docs/payment-recovery-sdd/README.md와 docs/payment-recovery-sdd/01-as-is-flow.md의 파일 목록, 섹션 헤더, 주요 표 헤더, 문서 관계를 먼저 출력하라. 필요한 입력과 생성 범위는 모두 확정했으며 이 메시지를 사용자 확정으로 간주한다. 제안한 두 파일을 그대로 생성하고 이번에 생성한 파일만 읽어 검증하라.",
+      "should_trigger": true,
+      "expected_stage_files": [
+        "docs/payment-recovery-sdd/README.md",
+        "docs/payment-recovery-sdd/01-as-is-flow.md"
+      ],
+      "expected_checks": ["skill_triggered", "stage1_files_created", "relation_block_present", "relative_links_resolve", "no_undeclared_files"]
+    },
+    {
+      "id": "outcome-stage1-inventory-reconciliation",
+      "category": "outcome",
+      "prompt": "$sdd-doc-scaffold Skill을 사용한다. 작업 등급은 Medium, feature 슬러그는 inventory-reconciliation, 작업 ID prefix는 INVENTORY-RECONCILIATION, 관련 코드 경로는 src/main/java/example/inventory, 기준 태그는 release-2026.07, 작성일은 2026-07-22, 현재 단계는 Stage 1이다. docs/inventory-reconciliation-sdd/README.md와 docs/inventory-reconciliation-sdd/01-as-is-flow.md의 파일 목록, 섹션 헤더, 주요 표 헤더, 문서 관계를 먼저 출력하라. 필요한 입력과 생성 범위는 모두 확정했으며 이 메시지를 사용자 확정으로 간주한다. 제안한 두 파일을 그대로 생성하고 이번에 생성한 파일만 읽어 검증하라.",
+      "should_trigger": true,
+      "expected_stage_files": [
+        "docs/inventory-reconciliation-sdd/README.md",
+        "docs/inventory-reconciliation-sdd/01-as-is-flow.md"
+      ],
+      "expected_checks": ["skill_triggered", "stage1_files_created", "relation_block_present", "relative_links_resolve", "no_undeclared_files"]
     }
   ]
 }

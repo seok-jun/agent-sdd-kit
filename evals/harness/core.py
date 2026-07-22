@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 from dataclasses import asdict, dataclass, field
@@ -51,22 +52,47 @@ Check = Callable[[RunContext], CheckResult]
 
 
 def run_process(command: list[str], cwd: Path, timeout: int) -> tuple[int, str, str, bool]:
+    executable = shutil.which(command[0])
+    if executable is None:
+        raise FileNotFoundError(f"CLI not found: {command[0]}")
+    resolved_command = [executable, *command[1:]]
     try:
         completed = subprocess.run(
-            command,
+            resolved_command,
             cwd=cwd,
             capture_output=True,
             stdin=subprocess.DEVNULL,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             check=False,
             env={**os.environ, "NO_COLOR": "1"},
         )
         return completed.returncode, completed.stdout, completed.stderr, False
     except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        stderr = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        stdout = (
+            exc.stdout.decode("utf-8", errors="replace")
+            if isinstance(exc.stdout, bytes)
+            else (exc.stdout or "")
+        )
+        stderr = (
+            exc.stderr.decode("utf-8", errors="replace")
+            if isinstance(exc.stderr, bytes)
+            else (exc.stderr or "")
+        )
         return 124, stdout, stderr, True
+
+
+def _remove_readonly(func: Callable[..., Any], path: str, _exc_info: Any) -> None:
+    """Retry Windows cleanup after clearing Git's read-only file attribute."""
+
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
+
+def remove_workspace(workspace: Path) -> None:
+    shutil.rmtree(workspace, onerror=_remove_readonly)
 
 
 def git(workspace: Path, *args: str) -> str:
@@ -162,7 +188,7 @@ def prepare_workspace(
             )
         except Exception:
             if destination is None and workspace.name.startswith("agent-sdd-eval-"):
-                shutil.rmtree(workspace, ignore_errors=True)
+                remove_workspace(workspace)
             raise
 
     git(workspace, "init", "-q", "-b", "main")
