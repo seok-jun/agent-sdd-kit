@@ -44,10 +44,11 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(command[:3], ["codex", "exec", "--json"])
         self.assertNotIn("--ephemeral", command)
         self.assertIn("workspace-write", command)
-        self.assertIn("--ignore-user-config", command)
+        self.assertNotIn("--ignore-user-config", command)
         self.assertIn("--ignore-rules", command)
         self.assertNotIn("--full-auto", command)
         self.assertIn("gpt-test", command)
+        self.assertNotIn("test prompt", command)
 
     def test_codex_command_pins_default_model(self) -> None:
         command = codex.build_command("test prompt")
@@ -80,10 +81,45 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(mocked.call_args.kwargs["encoding"], "utf-8")
         self.assertEqual(mocked.call_args.kwargs["errors"], "replace")
 
+    def test_run_process_sends_unicode_input_as_utf8_stdin(self) -> None:
+        completed = SimpleNamespace(returncode=0, stdout="out", stderr="")
+        prompt = "$sdd-doc-scaffold Skill을 사용해서 문서 골격을 만들어줘."
+        with (
+            patch(
+                "evals.harness.core.shutil.which",
+                return_value=r"C:\\tools\\codex.cmd",
+            ),
+            patch("evals.harness.core.subprocess.run", return_value=completed) as mocked,
+        ):
+            run_process(["codex", "exec"], Path("."), 10, input_text=prompt)
+        self.assertEqual(
+            mocked.call_args.args[0],
+            [r"C:\\tools\\codex.cmd", "exec"],
+        )
+        self.assertEqual(mocked.call_args.kwargs["input"], prompt)
+        self.assertNotIn("stdin", mocked.call_args.kwargs)
+        self.assertEqual(mocked.call_args.kwargs["encoding"], "utf-8")
+
     def test_run_process_reports_missing_cli(self) -> None:
         with patch("evals.harness.core.shutil.which", return_value=None):
             with self.assertRaisesRegex(FileNotFoundError, "CLI not found: missing-agent"):
                 run_process(["missing-agent"], Path("."), 10)
+
+    def test_git_decodes_output_as_utf8(self) -> None:
+        completed = SimpleNamespace(returncode=0, stdout="한글 diff\n", stderr="")
+        with patch("evals.harness.core.subprocess.run", return_value=completed) as mocked:
+            from evals.harness.core import git
+
+            self.assertEqual(git(Path("workspace"), "diff", "HEAD"), "한글 diff\n")
+        self.assertEqual(mocked.call_args.kwargs["encoding"], "utf-8")
+        self.assertEqual(mocked.call_args.kwargs["errors"], "replace")
+
+    def test_git_normalizes_missing_stdout(self) -> None:
+        completed = SimpleNamespace(returncode=0, stdout=None, stderr="")
+        with patch("evals.harness.core.subprocess.run", return_value=completed):
+            from evals.harness.core import git
+
+            self.assertEqual(git(Path("workspace"), "diff", "HEAD"), "")
 
     def test_command_version_uses_resolved_windows_shim(self) -> None:
         completed = SimpleNamespace(returncode=0, stdout="1.2.3\n", stderr="")
