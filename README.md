@@ -88,7 +88,6 @@ prompt set
   "prompt": "$sdd-doc-scaffold Skill을 사용해서 결제 오류 복구 작업의 SDD 문서 골격을 만들어줘.",
   "should_trigger": true,
   "expected_checks": [
-    "agent_exit_zero",
     "skill_triggered",
     "proposes_task_grade",
     "asks_for_confirmation",
@@ -236,7 +235,7 @@ python scripts/run_evals.py \
   --trials 5
 ```
 
-`summary.json`의 `per_check`와 `baseline_deltas`에 check별 양쪽 통과율과 차이가 기록된다. 차이가 없는 행동 check는 판정식이 너무 느슨한지 검토해야 한다. 다만 `agent_exit_zero`, 파일 범위 제한 같은 안전 불변식은 Skill 유무와 상관없이 양쪽이 통과하는 것이 정상일 수 있으므로, delta 0을 모든 check의 자동 실패 조건으로 사용하지 않는다.
+`summary.json`의 `per_check`와 `baseline_deltas`에 check별 양쪽 통과율과 차이가 기록된다. 차이가 없는 행동 check는 판정식이 너무 느슨한지 검토해야 한다. 다만 파일 범위 제한 같은 안전 불변식은 Skill 유무와 상관없이 양쪽이 통과하는 것이 정상일 수 있으므로, delta 0을 모든 check의 자동 실패 조건으로 사용하지 않는다.
 
 ### 종료 코드와 임계값
 
