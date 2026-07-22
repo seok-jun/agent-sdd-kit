@@ -4,6 +4,7 @@ import importlib.util
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -100,7 +101,7 @@ def prepare_workspace(
         source_skill = repo_root / "skills" / skill
         if not (source_skill / "SKILL.md").is_file():
             raise FileNotFoundError(f"Skill not found: {source_skill}")
-        skill_home = ".codex/skills" if harness == "codex" else ".claude/skills"
+        skill_home = ".agents/skills" if harness == "codex" else ".claude/skills"
         shutil.copytree(source_skill, workspace / skill_home / skill)
 
     git(workspace, "init", "-q", "-b", "main")
@@ -114,12 +115,16 @@ def prepare_workspace(
 
 
 def collect_changes(workspace: Path) -> tuple[list[str], str]:
-    tracked = git(workspace, "diff", "--name-only", "HEAD").splitlines()
-    untracked = git(workspace, "ls-files", "--others", "--exclude-standard").splitlines()
-    paths = sorted({path.strip() for path in [*tracked, *untracked] if path.strip()})
+    # Intent-to-add makes new files visible in the normal diff without staging
+    # their contents. Eval workspaces are disposable, so mutating their index is
+    # safe and lets workspace.diff contain the artifacts under evaluation.
+    git(workspace, "add", "--intent-to-add", "--", ".")
+    paths = sorted(
+        path.strip()
+        for path in git(workspace, "diff", "--name-only", "HEAD").splitlines()
+        if path.strip()
+    )
     diff = git(workspace, "diff", "--binary", "HEAD")
-    if untracked:
-        diff += "\n# Untracked files\n" + "\n".join(sorted(untracked)) + "\n"
     return paths, diff
 
 
@@ -169,6 +174,7 @@ def write_artifacts(
     artifact_dir: Path,
     context: RunContext,
     evaluation: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
 ) -> None:
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "trace.jsonl").write_text(context.agent.stdout, encoding="utf-8")
@@ -184,6 +190,7 @@ def write_artifacts(
         "timed_out": context.agent.timed_out,
         "usage": context.agent.usage,
         "changed_paths": context.changed_paths,
+        **(metadata or {}),
         **evaluation,
     }
     (artifact_dir / "result.json").write_text(
@@ -195,12 +202,74 @@ def project_paths(paths: list[str]) -> list[str]:
     return [
         path
         for path in paths
-        if not path.startswith((".codex/skills/", ".claude/skills/"))
+        if not path.startswith((".agents/skills/", ".codex/skills/", ".claude/skills/"))
     ]
 
 
 def tool_trace_text(context: RunContext) -> str:
     return json.dumps(context.agent.tool_trace, ensure_ascii=False).lower()
+
+
+def _strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [item for child in value.values() for item in _strings(child)]
+    if isinstance(value, list):
+        return [item for child in value for item in _strings(child)]
+    return []
+
+
+def _normal_path(value: str) -> str:
+    return re.sub(r"/+", "/", value.replace("\\", "/")).lower()
+
+
+def is_skill_path(value: str) -> bool:
+    normalized = _normal_path(value)
+    return any(
+        marker in normalized
+        for marker in (".agents/skills/", ".codex/skills/", ".claude/skills/")
+    )
+
+
+def skill_trigger_evidence(context: RunContext) -> str | None:
+    """Return structured evidence that the target Skill was actually loaded."""
+
+    skill = context.skill.lower()
+    skill_file = f"/{skill}/skill.md"
+    for event in context.agent.tool_trace:
+        if not isinstance(event, dict):
+            continue
+        name = str(event.get("name", "")).lower()
+        tool_input = event.get("input", {})
+        if name == "skill":
+            for value in _strings(tool_input):
+                candidate = value.strip().lower().lstrip("$/")
+                if candidate == skill or candidate.split()[0:1] == [skill]:
+                    return f"Skill tool input={value!r}"
+
+        for value in _strings(event):
+            normalized = _normal_path(value)
+            if skill_file in f"/{normalized.lstrip('/')}" and is_skill_path(normalized):
+                return f"SKILL.md path={value!r}"
+    return None
+
+
+def tool_calls(context: RunContext) -> list[tuple[str, dict[str, Any]]]:
+    """Normalize the small subset of Claude and Codex trace events used by checks."""
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+    for event in context.agent.tool_trace:
+        if not isinstance(event, dict):
+            continue
+        if isinstance(event.get("name"), str):
+            tool_input = event.get("input", {})
+            calls.append((event["name"], tool_input if isinstance(tool_input, dict) else {}))
+            continue
+        item = event.get("item")
+        if isinstance(item, dict) and isinstance(item.get("type"), str):
+            calls.append((item["type"], item))
+    return calls
 
 
 def common_registry() -> dict[str, Check]:
@@ -211,17 +280,8 @@ def common_registry() -> dict[str, Check]:
         )
 
     def skill_triggered(context: RunContext) -> CheckResult:
-        trace = tool_trace_text(context)
-        skill = context.skill.lower()
-        markers = [
-            f"{skill}/skill.md",
-            f"\\{skill}\\skill.md",
-            f'"skill": "{skill}"',
-            f'"skill":"{skill}"',
-            f'"name": "{skill}"',
-        ]
-        matched = next((marker for marker in markers if marker in trace), None)
-        return CheckResult(matched is not None, f"trace marker={matched or 'not found'}")
+        evidence = skill_trigger_evidence(context)
+        return CheckResult(evidence is not None, evidence or "trigger evidence not found")
 
     def skill_not_triggered(context: RunContext) -> CheckResult:
         triggered = skill_triggered(context)
@@ -246,9 +306,16 @@ def common_registry() -> dict[str, Check]:
 
     def asks_for_confirmation(context: RunContext) -> CheckResult:
         response = context.agent.response
-        markers = ["확인", "결정", "알려", "입력", "승인"]
-        matched = [marker for marker in markers if marker in response]
-        return CheckResult(bool(matched), f"confirmation markers={matched}")
+        patterns = [
+            r"(?:확인|승인|선택|결정).{0,40}(?:해\s*주세요|해주세요|해줘|부탁드립니다|받은\s*뒤|받기\s*전|필요합니다|할까요|하시겠습니까|\?)",
+            r"(?:알려\s*주세요|말해\s*주세요|입력해\s*주세요)",
+        ]
+        matched = [pattern for pattern in patterns if re.search(pattern, response, re.DOTALL)]
+        changed = project_paths(context.changed_paths)
+        return CheckResult(
+            bool(matched) and not changed,
+            f"confirmation_patterns={len(matched)}, changed={changed}",
+        )
 
     return {
         "agent_exit_zero": agent_exit_zero,
