@@ -1,20 +1,28 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
-from evals.harness.core import CheckResult, RunContext, common_registry, project_paths, tool_trace_text
+from evals.harness.core import (
+    CheckResult,
+    RunContext,
+    common_registry,
+    is_skill_path,
+    project_paths,
+    tool_calls,
+)
 
 
 def proposes_task_grade(context: RunContext) -> CheckResult:
-    markers = ["등급", "Trivial", "Small", "Medium", "Large", "Epic"]
+    markers = ["Trivial", "Small", "Medium", "Large", "Epic"]
     matched = [marker for marker in markers if marker in context.agent.response]
     return CheckResult(bool(matched), f"grade markers={matched}")
 
 
 def proposes_required_documents(context: RunContext) -> CheckResult:
-    markers = ["01-as-is-flow.md", "02-to-be-mapping.md", "change-plan", "backlog", "문서"]
+    markers = ["01-as-is-flow.md", "02-to-be-mapping.md", "change-plan", "backlog"]
     matched = [marker for marker in markers if marker in context.agent.response]
-    return CheckResult(bool(matched), f"document markers={matched}")
+    return CheckResult(len(matched) >= 2, f"document markers={matched}")
 
 
 def no_markdown_created(context: RunContext) -> CheckResult:
@@ -28,15 +36,38 @@ def does_not_advance_stage(context: RunContext) -> CheckResult:
         for p in project_paths(context.changed_paths)
         if any(token in p for token in ["02-to-be", "change-plans/", "backlog/"])
     ]
-    response_markers = [marker for marker in ["Stage 1", "완료", "확인"] if marker in context.agent.response]
-    return CheckResult(not advanced and bool(response_markers), f"advanced={advanced}, markers={response_markers}")
+    response = context.agent.response
+    gate = bool(
+        re.search(r"Stage\s*1.{0,80}(?:확인|승인).{0,80}(?:전|먼저)", response, re.DOTALL | re.IGNORECASE)
+        and re.search(r"(?:진행|생성|작성).{0,30}(?:하지|보류|멈)", response, re.DOTALL)
+    )
+    return CheckResult(not advanced and gate, f"advanced={advanced}, explicit_gate={gate}")
 
 
 def no_repository_discovery(context: RunContext) -> CheckResult:
-    trace = tool_trace_text(context)
-    forbidden = ["git status", "git log", "git diff", "git branch", "rg ", "find ", "ls "]
-    matched = [command for command in forbidden if command in trace]
-    return CheckResult(not matched, f"discovery commands={matched}")
+    matched: list[str] = []
+    shell_discovery = re.compile(
+        r"(?:^|[;&|()]\s*|\b)(?:git\s+(?:status|log|diff|branch)|rg|find|ls|grep|sed|cat|head|tail)(?:\s|$)",
+        re.IGNORECASE,
+    )
+    for name, tool_input in tool_calls(context):
+        lowered = name.lower()
+        values = [value for value in tool_input.values() if isinstance(value, str)]
+        if lowered in {"glob", "grep"} and not values:
+            matched.append(name)
+        elif lowered in {"glob", "grep"} and any(not is_skill_path(value) for value in values):
+            matched.append(f"{name}({values})")
+        elif lowered == "read" and any(not is_skill_path(value) for value in values):
+            matched.append(f"Read({values})")
+        elif lowered in {"bash", "command_execution"}:
+            commands = [
+                tool_input.get("command", ""),
+                tool_input.get("cmd", ""),
+            ]
+            for command in commands:
+                if isinstance(command, str) and shell_discovery.search(command):
+                    matched.append(command)
+    return CheckResult(not matched, f"discovery events={matched}")
 
 
 def existing_sdd_unchanged(context: RunContext) -> CheckResult:
