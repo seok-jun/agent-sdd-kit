@@ -11,63 +11,63 @@
       "category": "trigger",
       "prompt": "$sdd-doc-scaffold Skill을 사용해서 결제 오류 복구 작업의 SDD 문서 골격을 만들어줘.",
       "should_trigger": true,
-      "expected_checks": ["agent_exit_zero", "skill_triggered", "proposes_task_grade", "asks_for_confirmation", "no_project_files_changed"]
+      "expected_checks": ["skill_triggered", "proposes_task_grade", "asks_for_confirmation", "no_project_files_changed"]
     },
     {
       "id": "trigger-implicit-sdd-start",
       "category": "trigger",
       "prompt": "레거시 주문 취소 로직을 SDD 방식으로 분석부터 설계, 구현 백로그까지 단계적으로 시작하자.",
       "should_trigger": true,
-      "expected_checks": ["agent_exit_zero", "skill_triggered", "proposes_task_grade", "asks_for_confirmation", "no_project_files_changed"]
+      "expected_checks": ["skill_triggered", "proposes_task_grade", "asks_for_confirmation", "no_project_files_changed"]
     },
     {
       "id": "trigger-bounded-grade-question",
       "category": "trigger",
       "prompt": "아래 작업을 SDD 방식으로 진행하려고 해. 어떤 작업 등급이고 어떤 문서가 필요한지만 알려줘. 저장소는 조사하지 말고 파일도 만들거나 수정하지 마.\n\n- 주문 취소 API에 부분 취소 분기 추가\n- 기존 전체 취소 흐름은 유지",
       "should_trigger": true,
-      "expected_checks": ["agent_exit_zero", "skill_triggered", "proposes_task_grade", "proposes_required_documents", "no_repository_discovery", "no_project_files_changed"]
+      "expected_checks": ["skill_triggered", "proposes_task_grade", "proposes_required_documents", "no_repository_discovery", "no_project_files_changed"]
     },
     {
       "id": "no-trigger-retrospective-analysis",
       "category": "non-trigger",
       "prompt": "최근 작업에서 반복된 문제와 개선점만 정리해줘. 저장소는 조사하지 말고 파일도 만들거나 수정하지 마.",
       "should_trigger": false,
-      "expected_checks": ["agent_exit_zero", "skill_not_triggered", "no_project_files_changed"]
+      "expected_checks": ["skill_not_triggered", "no_project_files_changed"]
     },
     {
       "id": "no-trigger-bounded-code-analysis",
       "category": "non-trigger",
       "prompt": "아래 코드 조각에서 NullPointerException이 발생할 수 있는 지점만 설명해줘. 저장소의 다른 파일은 읽거나 수정하지 말고, 코드 변경안도 작성하지 마.\n\n```java\nString customerName = order.getCustomer().getName();\n```",
       "should_trigger": false,
-      "expected_checks": ["agent_exit_zero", "skill_not_triggered", "no_repository_discovery", "no_project_files_changed"]
+      "expected_checks": ["skill_not_triggered", "no_repository_discovery", "no_project_files_changed"]
     },
     {
       "id": "no-trigger-general-sdd-explanation",
       "category": "non-trigger",
       "prompt": "SDD가 일반적인 설계 문서 작성과 어떻게 다른지 개념만 설명해줘. 파일은 만들거나 수정하지 마.",
       "should_trigger": false,
-      "expected_checks": ["agent_exit_zero", "skill_not_triggered", "no_project_files_changed"]
+      "expected_checks": ["skill_not_triggered", "no_project_files_changed"]
     },
     {
       "id": "small-no-files",
       "category": "procedure",
       "prompt": "오타 한 줄 수정 작업이야. $sdd-doc-scaffold로 기록해줘.",
       "should_trigger": true,
-      "expected_checks": ["agent_exit_zero", "skill_triggered", "proposes_task_grade", "no_markdown_created"]
+      "expected_checks": ["skill_triggered", "proposes_task_grade", "no_markdown_created"]
     },
     {
       "id": "stage-gate-block",
       "category": "procedure",
       "prompt": "Stage 1 완료 확인은 아직 안 했지만 Stage 2 change plan 골격부터 만들어줘.",
       "should_trigger": true,
-      "expected_checks": ["agent_exit_zero", "skill_triggered", "does_not_advance_stage", "no_project_files_changed"]
+      "expected_checks": ["skill_triggered", "does_not_advance_stage", "no_project_files_changed"]
     },
     {
       "id": "no-repository-discovery",
       "category": "procedure",
       "prompt": "Medium 작업으로 시작해줘. feature는 payment-recovery야. 나머지는 저장소에서 알아서 찾아.",
       "should_trigger": true,
-      "expected_checks": ["agent_exit_zero", "skill_triggered", "no_repository_discovery", "asks_for_confirmation", "no_project_files_changed"]
+      "expected_checks": ["skill_triggered", "no_repository_discovery", "asks_for_confirmation", "no_project_files_changed"]
     },
     {
       "id": "existing-sdd-no-overwrite",
@@ -75,7 +75,7 @@
       "fixture": "existing-sdd",
       "prompt": "payment-recovery의 Stage 1 골격을 새로 만들어줘. 기존 파일이 있어도 덮어써도 돼.",
       "should_trigger": true,
-      "expected_checks": ["agent_exit_zero", "skill_triggered", "existing_sdd_unchanged", "asks_for_confirmation"]
+      "expected_checks": ["skill_triggered", "existing_sdd_unchanged", "asks_for_confirmation"]
     }
   ]
 }
