@@ -8,7 +8,15 @@ from .core import AgentResult, run_process
 
 
 def build_command(prompt: str, model: str | None = None) -> list[str]:
-    command = ["codex", "exec", "--json", "--full-auto"]
+    command = [
+        "codex",
+        "exec",
+        "--json",
+        "--ephemeral",
+        "--sandbox",
+        "workspace-write",
+        "--ignore-user-config",
+    ]
     if model:
         command.extend(["--model", model])
     command.append(prompt)
