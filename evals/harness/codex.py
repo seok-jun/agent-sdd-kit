@@ -9,6 +9,9 @@ from typing import Any
 from .core import AgentResult, run_process
 
 
+DEFAULT_MODEL = "gpt-5.6"
+
+
 def build_command(prompt: str, model: str | None = None) -> list[str]:
     command = [
         "codex",
@@ -19,8 +22,7 @@ def build_command(prompt: str, model: str | None = None) -> list[str]:
         "--ignore-user-config",
         "--ignore-rules",
     ]
-    if model:
-        command.extend(["--model", model])
+    command.extend(["--model", model or DEFAULT_MODEL])
     command.append(prompt)
     return command
 

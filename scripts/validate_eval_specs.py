@@ -13,7 +13,8 @@ sys.path.insert(0, str(ROOT))
 
 from evals.harness.core import load_check_registry  # noqa: E402
 
-VALID_CATEGORIES = {"trigger", "non-trigger", "procedure"}
+VALID_CATEGORIES = {"trigger", "non-trigger", "procedure", "outcome"}
+REQUIRED_CATEGORIES = {"trigger", "non-trigger", "procedure"}
 
 
 class ValidationError(Exception):
@@ -93,12 +94,25 @@ def validate_spec(source: Path) -> tuple[int, int]:
         if trigger_check not in checks:
             raise ValidationError(f"{source}: case '{case_id}' must include '{trigger_check}'")
 
+        if category == "outcome":
+            stage_files = case.get("expected_stage_files")
+            if not isinstance(stage_files, list) or not stage_files:
+                raise ValidationError(
+                    f"{source}: outcome case '{case_id}' must define expected_stage_files"
+                )
+            for stage_file in stage_files:
+                path = Path(require_string(stage_file, "expected_stage_files", source))
+                if path.is_absolute() or ".." in path.parts:
+                    raise ValidationError(
+                        f"{source}: outcome case '{case_id}' has unsafe stage file '{stage_file}'"
+                    )
+
         fixture = require_string(case.get("fixture", default_fixture), "fixture", source)
         if Path(fixture).name != fixture:
             raise ValidationError(f"{source}: case '{case_id}' fixture must be a simple name")
         fixtures.add(fixture)
 
-    missing_categories = VALID_CATEGORIES - categories
+    missing_categories = REQUIRED_CATEGORIES - categories
     if missing_categories:
         raise ValidationError(f"{source}: missing categories {sorted(missing_categories)}")
     for fixture in fixtures:

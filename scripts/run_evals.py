@@ -26,6 +26,7 @@ from evals.harness.core import (  # noqa: E402
     evaluate,
     load_check_registry,
     prepare_workspace,
+    remove_workspace,
     snapshot_workspace,
     write_artifacts,
 )
@@ -40,7 +41,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skill", action="append", help="Skill name; repeatable. Default: all")
     parser.add_argument("--harness", choices=["codex", "claude", "both"], default="both")
     parser.add_argument("--case", action="append", help="Case id; repeatable")
-    parser.add_argument("--category", choices=["trigger", "non-trigger", "procedure"])
+    parser.add_argument(
+        "--category", choices=["trigger", "non-trigger", "procedure", "outcome"]
+    )
     parser.add_argument("--trials", type=int, help="Override prompt-set default (3-5)")
     parser.add_argument("--timeout", type=int, default=900, help="Seconds per agent run")
     parser.add_argument("--codex-model")
@@ -195,10 +198,17 @@ def aggregate_usage(results: list[dict[str, Any]]) -> dict[str, dict[str, float]
 
 
 def command_version(binary: str) -> str | None:
-    if shutil.which(binary) is None:
+    executable = shutil.which(binary)
+    if executable is None:
         return None
     completed = subprocess.run(
-        [binary, "--version"], capture_output=True, text=True, timeout=10, check=False
+        [executable, "--version"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=10,
+        check=False,
     )
     text = (completed.stdout or completed.stderr).strip()
     return text or None
@@ -289,7 +299,11 @@ def main() -> int:
         skill = payload["skill"]
         registry = load_check_registry(source.parent / "checks.py")
         adapter = ADAPTERS[harness]
-        model = args.codex_model if harness == "codex" else args.claude_model
+        model = (
+            args.codex_model or codex.DEFAULT_MODEL
+            if harness == "codex"
+            else args.claude_model
+        )
         fixture_name = case.get("fixture", payload["defaults"]["fixture"])
         fixture_root = source.parent / "fixtures" / fixture_name
         try:
@@ -378,6 +392,7 @@ def main() -> int:
                     {
                         "condition": condition,
                         "requested_model": model,
+                        "model": model,
                         "cli_version": cli_versions[harness],
                         "prompt_set_version": payload["version"],
                         "timeout_seconds": args.timeout,
@@ -397,6 +412,7 @@ def main() -> int:
                     "error": error,
                     "checks": evaluation["checks"],
                     "usage": agent.usage,
+                    "model": model,
                 }
             )
             display = "DRY" if args.dry_run else run_status.upper()
@@ -405,7 +421,7 @@ def main() -> int:
             if args.keep_workspaces:
                 print(f"workspace kept: {workspace}")
             elif workspace.name.startswith("agent-sdd-eval-"):
-                shutil.rmtree(workspace)
+                remove_workspace(workspace)
 
     if args.dry_run:
         return 0
@@ -473,7 +489,11 @@ def main() -> int:
                 },
                 "cli_versions": cli_versions,
                 "requested_models": {
-                    "codex": args.codex_model,
+                    "codex": args.codex_model or codex.DEFAULT_MODEL,
+                    "claude": args.claude_model,
+                },
+                "models": {
+                    "codex": args.codex_model or codex.DEFAULT_MODEL,
                     "claude": args.claude_model,
                 },
                 "by_harness": by_harness,

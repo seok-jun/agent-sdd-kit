@@ -55,7 +55,7 @@ Skill을 사용하기만 한다면 `skills/{skill-name}/`만 복사하면 된다
 
 - `sdd-doc-scaffold`: 파일 구성, TODO 문구, 문서 관계 표와 Stage 게이트를 고정했다. 실제 feature, 코드 경로, 작업 ID는 치환 자리로 남겼다.
 - `pr-business-docs`: diff에서 시작해 공유 호출 체인의 다른 진입점까지 확장하고, 기존 문서의 부분 갱신을 기본값으로 둔다.
-- 두 Skill 모두 10개의 prompt를 `trigger`, `non-trigger`, `procedure`로 나눠 관리한다.
+- 각 Skill은 최소 10개의 prompt를 `trigger`, `non-trigger`, `procedure`로 나눠 관리한다. 실제 파일 산출물을 검증하는 케이스는 `outcome`으로 구분한다.
 - prompt는 실제 Codex 또는 Claude Code CLI에 전달된다.
 - 각 trial은 새 임시 Git 저장소에서 실행되고, 최종 응답·trace·diff·check 결과를 저장한다.
 - 같은 prompt와 check ID를 두 Harness에 적용하되 결과는 Harness별로 분리한다.
@@ -162,7 +162,7 @@ python -m unittest discover -s tests -v
 이 검증은 다음을 확인한다.
 
 - Skill별 prompt가 10~20개인지
-- `trigger`, `non-trigger`, `procedure`가 모두 있는지
+- `trigger`, `non-trigger`, `procedure`가 모두 있는지 (`outcome`은 산출물 생성 Skill에서 선택)
 - `should_trigger`와 category가 일치하는지
 - 모든 `expected_checks`가 registry 함수에 연결되는지
 - 기본 trial 수가 3~5인지
@@ -204,6 +204,7 @@ python scripts/run_evals.py \
 ```
 
 `--skill`을 생략하면 모든 Skill을 실행한다. `--case`, `--category`로 범위를 줄일 수 있다.
+Codex는 비교 재현성을 위해 기본 모델을 `gpt-5.6`으로 명시해 호출하며, `--codex-model`로 덮어쓸 수 있다. 선택된 값은 run별 결과와 `summary.json`에 기록된다.
 
 ```bash
 python scripts/run_evals.py \
@@ -215,7 +216,7 @@ python scripts/run_evals.py \
 
 `--trials 1`은 runner·adapter 점검용 smoke run이다. 기본 3회 결과는 방향성 신호이며, Skill 변경 채택이나 배포 판단에는 5회를 권장한다.
 
-Runner는 시작 전에 실제 Agent 호출 수와 timeout 기준 최대 누적 시간을 출력한다. 예를 들어 2 Skills × 10 cases × 3 trials × 2 Harnesses는 120회다. 실행은 의도적으로 직렬이다. 병렬 실행은 계정 rate limit과 예상하지 못한 사용량 증가를 만들 수 있어 참조 구현에 포함하지 않았다.
+Runner는 시작 전에 실제 Agent 호출 수와 timeout 기준 최대 누적 시간을 출력한다. 현재 22 cases × 3 trials × 2 Harnesses를 모두 실행하면 132회다. 실행은 의도적으로 직렬이다. 병렬 실행은 계정 rate limit과 예상하지 못한 사용량 증가를 만들 수 있어 참조 구현에 포함하지 않았다.
 
 ### Skill 미적용 baseline
 

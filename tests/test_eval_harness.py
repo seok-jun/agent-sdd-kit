@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+import stat
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from evals.harness import claude, codex
 from evals.harness.core import (
@@ -18,12 +19,13 @@ from evals.harness.core import (
     evaluate,
     load_check_registry,
     prepare_workspace,
+    remove_workspace,
     run_process,
     skill_trigger_evidence,
     snapshot_workspace,
     write_artifacts,
 )
-from scripts.run_evals import aggregate, baseline_deltas
+from scripts.run_evals import aggregate, baseline_deltas, command_version
 
 
 class HarnessTests(unittest.TestCase):
@@ -47,6 +49,11 @@ class HarnessTests(unittest.TestCase):
         self.assertNotIn("--full-auto", command)
         self.assertIn("gpt-test", command)
 
+    def test_codex_command_pins_default_model(self) -> None:
+        command = codex.build_command("test prompt")
+        model_index = command.index("--model")
+        self.assertEqual(command[model_index + 1], codex.DEFAULT_MODEL)
+
     def test_claude_command_is_streamed_and_non_persistent(self) -> None:
         command = claude.build_command("test prompt", "sonnet")
         self.assertIn("stream-json", command)
@@ -60,9 +67,46 @@ class HarnessTests(unittest.TestCase):
 
     def test_run_process_closes_stdin(self) -> None:
         completed = SimpleNamespace(returncode=0, stdout="out", stderr="")
-        with patch("evals.harness.core.subprocess.run", return_value=completed) as mocked:
+        with (
+            patch(
+                "evals.harness.core.shutil.which",
+                return_value=r"C:\\tools\\agent.cmd",
+            ),
+            patch("evals.harness.core.subprocess.run", return_value=completed) as mocked,
+        ):
             run_process(["agent"], Path("."), 10)
+        self.assertEqual(mocked.call_args.args[0], [r"C:\\tools\\agent.cmd"])
         self.assertIs(mocked.call_args.kwargs["stdin"], subprocess.DEVNULL)
+        self.assertEqual(mocked.call_args.kwargs["encoding"], "utf-8")
+        self.assertEqual(mocked.call_args.kwargs["errors"], "replace")
+
+    def test_run_process_reports_missing_cli(self) -> None:
+        with patch("evals.harness.core.shutil.which", return_value=None):
+            with self.assertRaisesRegex(FileNotFoundError, "CLI not found: missing-agent"):
+                run_process(["missing-agent"], Path("."), 10)
+
+    def test_command_version_uses_resolved_windows_shim(self) -> None:
+        completed = SimpleNamespace(returncode=0, stdout="1.2.3\n", stderr="")
+        with (
+            patch("scripts.run_evals.shutil.which", return_value=r"C:\\tools\\codex.cmd"),
+            patch("scripts.run_evals.subprocess.run", return_value=completed) as mocked,
+        ):
+            self.assertEqual(command_version("codex"), "1.2.3")
+        self.assertEqual(mocked.call_args.args[0], [r"C:\\tools\\codex.cmd", "--version"])
+        self.assertEqual(mocked.call_args.kwargs["encoding"], "utf-8")
+        self.assertEqual(mocked.call_args.kwargs["errors"], "replace")
+
+    def test_remove_workspace_retries_readonly_path(self) -> None:
+        retry = Mock()
+        with (
+            patch("evals.harness.core.shutil.rmtree") as rmtree,
+            patch("evals.harness.core.os.chmod") as chmod,
+        ):
+            remove_workspace(Path("workspace"))
+            handler = rmtree.call_args.kwargs["onerror"]
+            handler(retry, "workspace/.git/objects/readonly", None)
+        chmod.assert_called_once_with("workspace/.git/objects/readonly", stat.S_IWRITE)
+        retry.assert_called_once_with("workspace/.git/objects/readonly")
 
     def test_fixture_baseline_excludes_skill_and_keeps_overlay_diff(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -305,6 +349,57 @@ class PromptSetTests(unittest.TestCase):
                 self.assertIn("should_trigger", case)
                 self.assertTrue(case["expected_checks"])
                 self.assertNotIn("behaviors", case)
+
+    def test_sdd_outcome_checks_read_created_files(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        registry = load_check_registry(root / "evals/sdd-doc-scaffold/checks.py")
+        expected = [
+            "docs/payment-recovery-sdd/README.md",
+            "docs/payment-recovery-sdd/01-as-is-flow.md",
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            workspace = Path(temp)
+            output = workspace / "docs/payment-recovery-sdd"
+            output.mkdir(parents=True)
+            (output / "README.md").write_text(
+                "# payment-recovery SDD\n\n"
+                "| 항목 | 값 |\n|---|---|\n"
+                "| 문서 종류 | README |\n| 선행 문서 | 없음 |\n"
+                "| 후속 문서 | [01-as-is-flow.md](./01-as-is-flow.md) |\n"
+                "| 관련 코드 | src/main/java/example/order |\n\n## 목적\n",
+                encoding="utf-8",
+            )
+            (output / "01-as-is-flow.md").write_text(
+                "# payment-recovery - 현행 흐름\n\n"
+                "| 항목 | 값 |\n|---|---|\n"
+                "| 문서 종류 | as-is |\n| 선행 문서 | [README.md](./README.md) |\n"
+                "| 후속 문서 | 미정 |\n"
+                "| 관련 코드 | src/main/java/example/order |\n\n## 처리 흐름\n",
+                encoding="utf-8",
+            )
+            case = {
+                "expected_stage_files": expected,
+                "expected_checks": [
+                    "stage1_files_created",
+                    "relation_block_present",
+                    "relative_links_resolve",
+                    "no_undeclared_files",
+                ],
+            }
+            context = RunContext(
+                "sdd-doc-scaffold",
+                case,
+                "codex",
+                workspace,
+                AgentResult([], 0, "", "", "ignored response", [], {}),
+                expected,
+                "",
+            )
+            result = evaluate(context, registry)
+            self.assertTrue(result["passed"], result)
+
+            context.changed_paths.append("docs/payment-recovery-sdd/undeclared.md")
+            self.assertFalse(registry["no_undeclared_files"](context).passed)
 
 
 if __name__ == "__main__":
