@@ -279,6 +279,7 @@ def main() -> int:
         missing = [harness for harness in harnesses if shutil.which(harness) is None]
         if missing:
             raise SystemExit(f"Missing CLI(s): {', '.join(missing)}")
+    cli_versions = {harness: command_version(harness) for harness in harnesses}
     print(
         f"Planned agent calls: {len(selected)} "
         f"(up to {len(selected) * args.timeout} timeout-seconds, executed serially)."
@@ -350,7 +351,7 @@ def main() -> int:
                     {
                         "condition": condition,
                         "requested_model": model,
-                        "cli_version": command_version(harness),
+                        "cli_version": cli_versions[harness],
                         "prompt_set_version": payload["version"],
                         "timeout_seconds": args.timeout,
                         "trial": trial,
@@ -443,7 +444,7 @@ def main() -> int:
                     payload["skill"]: skill_digest(payload["skill"])
                     for _, payload in prompt_sets
                 },
-                "cli_versions": {harness: command_version(harness) for harness in harnesses},
+                "cli_versions": cli_versions,
                 "requested_models": {
                     "codex": args.codex_model,
                     "claude": args.claude_model,
