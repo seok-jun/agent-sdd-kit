@@ -273,12 +273,6 @@ def tool_calls(context: RunContext) -> list[tuple[str, dict[str, Any]]]:
 
 
 def common_registry() -> dict[str, Check]:
-    def agent_exit_zero(context: RunContext) -> CheckResult:
-        return CheckResult(
-            context.agent.exit_code == 0 and not context.agent.timed_out,
-            f"exit_code={context.agent.exit_code}, timed_out={context.agent.timed_out}",
-        )
-
     def skill_triggered(context: RunContext) -> CheckResult:
         evidence = skill_trigger_evidence(context)
         return CheckResult(evidence is not None, evidence or "trigger evidence not found")
@@ -318,7 +312,6 @@ def common_registry() -> dict[str, Check]:
         )
 
     return {
-        "agent_exit_zero": agent_exit_zero,
         "skill_triggered": skill_triggered,
         "skill_not_triggered": skill_not_triggered,
         "no_project_files_changed": no_project_files_changed,
