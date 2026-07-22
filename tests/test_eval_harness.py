@@ -44,7 +44,7 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(command[:3], ["codex", "exec", "--json"])
         self.assertNotIn("--ephemeral", command)
         self.assertIn("workspace-write", command)
-        self.assertIn("--ignore-user-config", command)
+        self.assertNotIn("--ignore-user-config", command)
         self.assertIn("--ignore-rules", command)
         self.assertNotIn("--full-auto", command)
         self.assertIn("gpt-test", command)

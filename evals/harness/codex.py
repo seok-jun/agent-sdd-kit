@@ -21,7 +21,6 @@ def build_command(prompt: str, model: str | None = None) -> list[str]:
         "--json",
         "--sandbox",
         "workspace-write",
-        "--ignore-user-config",
         "--ignore-rules",
     ]
     command.extend(["--model", model or DEFAULT_MODEL])
