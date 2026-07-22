@@ -1,6 +1,6 @@
 {
   "skill": "pr-business-docs",
-  "version": 1,
+  "version": 2,
   "cases": [
     {
       "id": "trigger-explicit-pr-doc-update",
@@ -28,24 +28,26 @@
       }
     },
     {
-      "id": "no-trigger-code-review",
+      "id": "no-trigger-bounded-code-review",
       "category": "non-trigger",
-      "query": "현재 변경 코드만 리뷰해서 버그 가능성을 알려줘.",
+      "query": "아래 코드 조각만 리뷰해서 버그 가능성을 알려줘. 저장소의 다른 파일은 읽거나 수정하지 마.\n\n```java\nif (stock > quantity) {\n    stock -= quantity;\n}\n```",
       "expected": {
         "should_trigger": false,
         "behaviors": [
-          "business 문서 갱신 절차를 시작하지 않는다"
+          "business 문서 갱신 절차를 시작하지 않는다",
+          "제공된 코드 조각만 리뷰하고 저장소를 조사하거나 파일을 수정하지 않는다"
         ]
       }
     },
     {
-      "id": "no-trigger-new-feature-doc",
+      "id": "no-trigger-new-feature-doc-guidance",
       "category": "non-trigger",
-      "query": "아직 구현 전인데 신규 결제 기능의 기획 문서를 처음부터 작성해줘.",
+      "query": "구현 전 신규 결제 기능의 기획 문서에 어떤 항목이 필요한지 일반적인 구성만 설명해줘. 저장소는 조사하지 말고 파일도 생성하거나 수정하지 마.",
       "expected": {
         "should_trigger": false,
         "behaviors": [
-          "구현 완료 후 PR 전 문서 동기화 상황이 아니므로 Skill을 적용하지 않는다"
+          "구현 완료 후 PR 전 문서 동기화 상황이 아니므로 Skill을 적용하지 않는다",
+          "일반적인 문서 구성을 응답으로만 설명하고 저장소를 조사하거나 파일을 생성하지 않는다"
         ]
       }
     },
