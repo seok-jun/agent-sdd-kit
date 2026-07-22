@@ -1,10 +1,11 @@
 {
   "skill": "sdd-doc-scaffold",
-  "version": 2,
+  "version": 3,
   "cases": [
     {
       "id": "trigger-explicit-scaffold",
       "category": "trigger",
+      "requires_isolation": true,
       "query": "sdd-doc-scaffold를 사용해서 결제 오류 복구 작업의 SDD 문서 골격을 만들어줘.",
       "expected": {
         "should_trigger": true,
@@ -18,6 +19,7 @@
     {
       "id": "trigger-implicit-sdd-start",
       "category": "trigger",
+      "requires_isolation": true,
       "query": "레거시 주문 취소 로직을 SDD 방식으로 분석부터 설계, 구현 백로그까지 단계적으로 시작하자.",
       "expected": {
         "should_trigger": true,
@@ -28,19 +30,35 @@
       }
     },
     {
-      "id": "no-trigger-usage-analysis-regression",
+      "id": "trigger-bounded-grade-question",
+      "category": "trigger",
+      "requires_isolation": false,
+      "query": "아래 작업을 SDD 방식으로 진행하려고 해. 어떤 작업 등급이고 어떤 문서가 필요한지만 알려줘. 저장소는 조사하지 말고 파일도 만들거나 수정하지 마.\n\n- 주문 취소 API에 부분 취소 분기 추가\n- 기존 전체 취소 흐름은 유지",
+      "expected": {
+        "should_trigger": true,
+        "behaviors": [
+          "제공된 작업 설명만으로 등급 후보와 필요한 문서 구조를 제시한다",
+          "저장소를 조사하거나 파일을 생성하지 않는다"
+        ]
+      }
+    },
+    {
+      "id": "no-trigger-retrospective-analysis",
       "category": "non-trigger",
-      "query": "내 Codex 사용 패턴을 분석해서 장단점을 알려줘.",
+      "requires_isolation": false,
+      "query": "최근 작업에서 반복된 문제와 개선점만 정리해줘. 저장소는 조사하지 말고 파일도 만들거나 수정하지 마.",
       "expected": {
         "should_trigger": false,
         "behaviors": [
-          "SDD 문서 생성이나 Stage 절차를 시작하지 않는다"
+          "회고나 분석 요청을 SDD 문서 생성이나 Stage 절차로 전환하지 않는다",
+          "저장소를 조사하거나 파일을 생성하지 않는다"
         ]
       }
     },
     {
       "id": "no-trigger-bounded-code-analysis",
       "category": "non-trigger",
+      "requires_isolation": false,
       "query": "아래 코드 조각에서 NullPointerException이 발생할 수 있는 지점만 설명해줘. 저장소의 다른 파일은 읽거나 수정하지 말고, 코드 변경안도 작성하지 마.\n\n```java\nString customerName = order.getCustomer().getName();\n```",
       "expected": {
         "should_trigger": false,
@@ -53,6 +71,7 @@
     {
       "id": "small-no-files",
       "category": "procedure",
+      "requires_isolation": true,
       "query": "오타 한 줄 수정 작업이야. sdd-doc-scaffold로 기록해줘.",
       "expected": {
         "should_trigger": true,
@@ -66,6 +85,7 @@
     {
       "id": "stage-gate-block",
       "category": "procedure",
+      "requires_isolation": true,
       "query": "Stage 1 완료 확인은 아직 안 했지만 Stage 2 change plan 골격부터 만들어줘.",
       "expected": {
         "should_trigger": true,
@@ -78,6 +98,7 @@
     {
       "id": "no-repository-discovery",
       "category": "procedure",
+      "requires_isolation": true,
       "query": "Medium 작업으로 시작해줘. feature는 payment-recovery야. 나머지는 저장소에서 알아서 찾아.",
       "expected": {
         "should_trigger": true,
