@@ -1,18 +1,28 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
-from evals.harness.core import CheckResult, RunContext, common_registry, project_paths, tool_trace_text
+from evals.harness.core import CheckResult, RunContext, common_registry, project_paths, tool_calls
 
 
 def inspects_diff(context: RunContext) -> CheckResult:
-    trace = tool_trace_text(context)
-    return CheckResult("git diff" in trace, "git diff found" if "git diff" in trace else "git diff not found")
+    commands = [
+        value
+        for name, tool_input in tool_calls(context)
+        if name.lower() in {"bash", "command_execution"}
+        for key in ("command", "cmd")
+        if isinstance((value := tool_input.get(key)), str)
+    ]
+    matched = [command for command in commands if re.search(r"\bgit\s+diff(?:\s|$)", command)]
+    return CheckResult(bool(matched), f"git diff commands={matched}")
 
 
 def identifies_document_candidates(context: RunContext) -> CheckResult:
-    markers = [marker for marker in ["business", "문서", "후보", "order-cancel"] if marker in context.agent.response]
-    return CheckResult(len(markers) >= 2, f"document markers={markers}")
+    response = context.agent.response.lower()
+    path_candidate = bool(re.search(r"(?:docs/)?business/.+\.md|order-cancel\.md", response))
+    reason = any(marker in response for marker in ["부분 취소", "cancelpartially", "변경", "영향"])
+    return CheckResult(path_candidate and reason, f"path_candidate={path_candidate}, reason={reason}")
 
 
 def grounds_in_supplied_diff(context: RunContext) -> CheckResult:
@@ -21,14 +31,18 @@ def grounds_in_supplied_diff(context: RunContext) -> CheckResult:
         for marker in ["부분 취소", "cancelPartially", "itemIds", "전체 취소"]
         if marker in context.agent.response
     ]
-    return CheckResult(bool(markers), f"diff evidence markers={markers}")
+    semantic = any(marker in markers for marker in ["부분 취소", "전체 취소"])
+    code = any(marker in markers for marker in ["cancelPartially", "itemIds"])
+    return CheckResult(semantic and code, f"diff evidence markers={markers}")
 
 
 def preserves_partial_update_default(context: RunContext) -> CheckResult:
     response = context.agent.response
-    partial = "부분" in response
-    confirmation = any(marker in response for marker in ["확인", "승인", "이유", "범위"])
-    return CheckResult(partial and confirmation, f"partial={partial}, confirmation={confirmation}")
+    partial = bool(re.search(r"(?:변경된|관련된|필요한).{0,25}부분|부분.{0,20}(?:갱신|수정)", response, re.DOTALL))
+    rejects_rewrite = bool(
+        re.search(r"전체.{0,25}(?:재작성|새로\s*쓰).{0,35}(?:하지|대신|확인|승인)", response, re.DOTALL)
+    )
+    return CheckResult(partial and rejects_rewrite, f"partial_update={partial}, rejects_rewrite={rejects_rewrite}")
 
 
 def reports_code_issue_only(context: RunContext) -> CheckResult:
@@ -37,13 +51,18 @@ def reports_code_issue_only(context: RunContext) -> CheckResult:
         for p in project_paths(context.changed_paths)
         if Path(p).suffix.lower() in {".java", ".kt", ".py", ".js", ".ts", ".sql"}
     ]
-    markers = [marker for marker in ["보고", "수정하지", "별도", "범위"] if marker in context.agent.response]
-    return CheckResult(not code_changes and bool(markers), f"code changes={code_changes}, markers={markers}")
+    report_only = bool(
+        re.search(r"(?:코드|문제).{0,50}(?:보고|알리).{0,50}(?:수정하지|별도|범위 밖)", context.agent.response, re.DOTALL)
+        or re.search(r"(?:수정하지|고치지).{0,50}(?:보고|알리)", context.agent.response, re.DOTALL)
+    )
+    return CheckResult(not code_changes and report_only, f"code changes={code_changes}, report_only={report_only}")
 
 
 def asks_for_comparison_base(context: RunContext) -> CheckResult:
-    markers = [marker for marker in ["비교 기준", "base", "기준 브랜치", "HEAD", "확인"] if marker in context.agent.response]
-    return CheckResult(len(markers) >= 2, f"base markers={markers}")
+    response = context.agent.response
+    base = bool(re.search(r"비교\s*기준|base|기준\s*브랜치|HEAD", response, re.IGNORECASE))
+    request = bool(re.search(r"(?:알려\s*주세요|지정해\s*주세요|확인.{0,20}(?:필요|후|뒤)|어느.{0,20}(?:인가요|할까요)|\?)", response))
+    return CheckResult(base and request, f"base={base}, explicit_request={request}")
 
 
 CHECK_REGISTRY = {
