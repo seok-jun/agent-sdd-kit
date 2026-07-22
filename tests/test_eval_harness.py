@@ -105,6 +105,22 @@ class HarnessTests(unittest.TestCase):
             with self.assertRaisesRegex(FileNotFoundError, "CLI not found: missing-agent"):
                 run_process(["missing-agent"], Path("."), 10)
 
+    def test_git_decodes_output_as_utf8(self) -> None:
+        completed = SimpleNamespace(returncode=0, stdout="한글 diff\n", stderr="")
+        with patch("evals.harness.core.subprocess.run", return_value=completed) as mocked:
+            from evals.harness.core import git
+
+            self.assertEqual(git(Path("workspace"), "diff", "HEAD"), "한글 diff\n")
+        self.assertEqual(mocked.call_args.kwargs["encoding"], "utf-8")
+        self.assertEqual(mocked.call_args.kwargs["errors"], "replace")
+
+    def test_git_normalizes_missing_stdout(self) -> None:
+        completed = SimpleNamespace(returncode=0, stdout=None, stderr="")
+        with patch("evals.harness.core.subprocess.run", return_value=completed):
+            from evals.harness.core import git
+
+            self.assertEqual(git(Path("workspace"), "diff", "HEAD"), "")
+
     def test_command_version_uses_resolved_windows_shim(self) -> None:
         completed = SimpleNamespace(returncode=0, stdout="1.2.3\n", stderr="")
         with (
