@@ -292,13 +292,35 @@ def main() -> int:
         model = args.codex_model if harness == "codex" else args.claude_model
         fixture_name = case.get("fixture", payload["defaults"]["fixture"])
         fixture_root = source.parent / "fixtures" / fixture_name
-        workspace = prepare_workspace(
-            ROOT,
-            skill,
-            fixture_root,
-            harness,
-            install_skill=condition == "with-skill",
-        )
+        try:
+            workspace = prepare_workspace(
+                ROOT,
+                skill,
+                fixture_root,
+                harness,
+                install_skill=condition == "with-skill",
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            error = f"workspace preparation failed: {exc}"
+            print(f"[ERROR] {condition}/{harness}/{skill}/{case['id']} trial {trial}: {error}")
+            if args.dry_run:
+                return 2
+            summary.append(
+                {
+                    "skill": skill,
+                    "harness": harness,
+                    "condition": condition,
+                    "case_id": case["id"],
+                    "should_trigger": case["should_trigger"],
+                    "trial": trial,
+                    "status": "error",
+                    "passed": False,
+                    "error": error,
+                    "checks": {},
+                    "usage": {},
+                }
+            )
+            continue
         before_agent = snapshot_workspace(workspace)
         try:
             command = adapter.build_command(case["prompt"], model)
@@ -314,7 +336,9 @@ def main() -> int:
                 run_status = "pass"
                 error = None
             else:
-                agent = adapter.run(case["prompt"], workspace, args.timeout, model)
+                agent = adapter.run(
+                    case["prompt"], workspace, args.timeout, model, skill=skill
+                )
                 _, diff = collect_changes(workspace)
                 changed_paths = changed_since(before_agent, snapshot_workspace(workspace))
                 effective_case = baseline_case(case) if condition == "without-skill" else case
@@ -327,8 +351,11 @@ def main() -> int:
                     changed_paths=changed_paths,
                     diff=diff,
                 )
-                if agent.timed_out or agent.exit_code != 0:
-                    error = f"exit_code={agent.exit_code}, timed_out={agent.timed_out}"
+                if agent.timed_out or agent.exit_code != 0 or agent.adapter_errors:
+                    error = (
+                        f"exit_code={agent.exit_code}, timed_out={agent.timed_out}, "
+                        f"adapter_errors={agent.adapter_errors}"
+                    )
                     evaluation = {"passed": False, "checks": {}, "error": error}
                     run_status = "error"
                 else:

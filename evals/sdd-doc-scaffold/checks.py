@@ -7,7 +7,6 @@ from evals.harness.core import (
     CheckResult,
     RunContext,
     common_registry,
-    is_skill_path,
     project_paths,
     tool_calls,
 )
@@ -46,27 +45,17 @@ def does_not_advance_stage(context: RunContext) -> CheckResult:
 
 def no_repository_discovery(context: RunContext) -> CheckResult:
     matched: list[str] = []
-    shell_discovery = re.compile(
-        r"(?:^|[;&|()]\s*|\b)(?:git\s+(?:status|log|diff|branch)|rg|find|ls|grep|sed|cat|head|tail)(?:\s|$)",
-        re.IGNORECASE,
-    )
     for name, tool_input in tool_calls(context):
         lowered = name.lower()
-        values = [value for value in tool_input.values() if isinstance(value, str)]
-        if lowered in {"glob", "grep"} and not values:
+        if context.harness == "claude" and lowered in {"read", "glob", "grep", "bash"}:
             matched.append(name)
-        elif lowered in {"glob", "grep"} and any(not is_skill_path(value) for value in values):
-            matched.append(f"{name}({values})")
-        elif lowered == "read" and any(not is_skill_path(value) for value in values):
-            matched.append(f"Read({values})")
-        elif lowered in {"bash", "command_execution"}:
-            commands = [
-                tool_input.get("command", ""),
-                tool_input.get("cmd", ""),
-            ]
-            for command in commands:
-                if isinstance(command, str) and shell_discovery.search(command):
-                    matched.append(command)
+        elif context.harness == "codex" and lowered in {
+            "command_execution",
+            "file_read",
+            "directory_listing",
+            "search_files",
+        }:
+            matched.append(name)
     return CheckResult(not matched, f"discovery events={matched}")
 
 
