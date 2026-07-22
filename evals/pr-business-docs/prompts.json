@@ -1,0 +1,81 @@
+{
+  "skill": "pr-business-docs",
+  "version": 4,
+  "defaults": {
+    "fixture": "legacy-order",
+    "trials": 3
+  },
+  "cases": [
+    {
+      "id": "trigger-explicit-pr-doc-update",
+      "category": "trigger",
+      "prompt": "$pr-business-docs Skill을 사용해서 현재 변경으로 오래된 business 문서를 찾아 갱신해줘.",
+      "should_trigger": true,
+      "expected_checks": ["agent_exit_zero", "skill_triggered", "inspects_diff", "identifies_document_candidates", "asks_for_confirmation", "no_project_files_changed"]
+    },
+    {
+      "id": "trigger-implicit-doc-sync",
+      "category": "trigger",
+      "prompt": "이번 구현이 끝났으니 PR 올리기 전에 변경된 동작을 기존 business 문서에 동기화해줘.",
+      "should_trigger": true,
+      "expected_checks": ["agent_exit_zero", "skill_triggered", "inspects_diff", "identifies_document_candidates", "asks_for_confirmation", "no_project_files_changed"]
+    },
+    {
+      "id": "trigger-bounded-doc-impact",
+      "category": "trigger",
+      "prompt": "아래 diff만 근거로 어떤 business 문서를 확인해야 하는지와 그 이유만 알려줘. 저장소는 조사하지 말고 문서나 코드를 수정하지도 마.\n\n```diff\n--- a/order/OrderCancelService.java\n+++ b/order/OrderCancelService.java\n@@\n-    public void cancel(Order order) {\n-        order.cancelAll();\n+    public void cancel(Order order, List<Long> itemIds) {\n+        if (itemIds.isEmpty()) {\n+            order.cancelAll();\n+        } else {\n+            order.cancelPartially(itemIds);\n+        }\n```",
+      "should_trigger": true,
+      "expected_checks": ["agent_exit_zero", "skill_triggered", "identifies_document_candidates", "grounds_in_supplied_diff", "no_project_files_changed"]
+    },
+    {
+      "id": "no-trigger-bounded-code-review",
+      "category": "non-trigger",
+      "prompt": "아래 코드 조각만 리뷰해서 버그 가능성을 알려줘. 저장소의 다른 파일은 읽거나 수정하지 마.\n\n```java\nif (stock > quantity) {\n    stock -= quantity;\n}\n```",
+      "should_trigger": false,
+      "expected_checks": ["agent_exit_zero", "skill_not_triggered", "no_project_files_changed"]
+    },
+    {
+      "id": "no-trigger-new-feature-doc-guidance",
+      "category": "non-trigger",
+      "prompt": "구현 전 신규 결제 기능의 기획 문서에 어떤 항목이 필요한지 일반적인 구성만 설명해줘. 저장소는 조사하지 말고 파일도 생성하거나 수정하지 마.",
+      "should_trigger": false,
+      "expected_checks": ["agent_exit_zero", "skill_not_triggered", "no_project_files_changed"]
+    },
+    {
+      "id": "no-trigger-code-fix-only",
+      "category": "non-trigger",
+      "prompt": "OrderCancelService의 NullPointerException만 수정해줘. business 문서 갱신이나 PR 준비는 하지 마.",
+      "should_trigger": false,
+      "expected_checks": ["agent_exit_zero", "skill_not_triggered", "no_sdd_modified"]
+    },
+    {
+      "id": "partial-update-default",
+      "category": "procedure",
+      "prompt": "관련 business 문서 전체를 새로 써줘. 기존 내용은 확인하지 않아도 돼.",
+      "should_trigger": true,
+      "expected_checks": ["agent_exit_zero", "skill_triggered", "preserves_partial_update_default", "no_project_files_changed"]
+    },
+    {
+      "id": "report-code-problem-only",
+      "category": "procedure",
+      "prompt": "문서 갱신 중 발견한 코드 문제도 같이 고쳐줘.",
+      "should_trigger": true,
+      "expected_checks": ["agent_exit_zero", "skill_triggered", "reports_code_issue_only", "no_code_modified"]
+    },
+    {
+      "id": "keep-sdd-history-unchanged",
+      "category": "procedure",
+      "prompt": "business 문서를 갱신하면서 관련 SDD 문서도 현재 구현에 맞게 같이 고쳐줘.",
+      "should_trigger": true,
+      "expected_checks": ["agent_exit_zero", "skill_triggered", "no_sdd_modified", "asks_for_confirmation"]
+    },
+    {
+      "id": "comparison-base-required",
+      "category": "procedure",
+      "fixture": "base-unspecified",
+      "prompt": "PR 전 business 문서 갱신을 바로 시작해줘. 비교 기준은 알아서 정해.",
+      "should_trigger": true,
+      "expected_checks": ["agent_exit_zero", "skill_triggered", "asks_for_comparison_base", "no_project_files_changed"]
+    }
+  ]
+}
