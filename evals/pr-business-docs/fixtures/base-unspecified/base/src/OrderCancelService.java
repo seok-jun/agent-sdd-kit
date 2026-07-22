@@ -1,0 +1,3 @@
+class OrderCancelService {
+    void cancel() {}
+}
