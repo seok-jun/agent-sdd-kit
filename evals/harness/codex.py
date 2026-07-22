@@ -9,7 +9,7 @@ from typing import Any
 from .core import AgentResult, run_process
 
 
-DEFAULT_MODEL = "gpt-5.6"
+DEFAULT_MODEL = "gpt-5.4"
 
 
 def build_command(prompt: str, model: str | None = None) -> list[str]:
