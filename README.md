@@ -204,7 +204,7 @@ python scripts/run_evals.py \
 ```
 
 `--skill`을 생략하면 모든 Skill을 실행한다. `--case`, `--category`로 범위를 줄일 수 있다.
-Codex는 비교 재현성을 위해 기본 모델을 `gpt-5.6`으로 명시해 호출하며, `--codex-model`로 덮어쓸 수 있다. 선택된 값은 run별 결과와 `summary.json`에 기록된다.
+Codex는 비교 재현성을 위해 기본 모델을 `gpt-5.4`로 명시해 호출하며, `--codex-model`로 덮어쓸 수 있다. 선택된 값은 run별 결과와 `summary.json`에 기록된다.
 
 ```bash
 python scripts/run_evals.py \
@@ -217,6 +217,17 @@ python scripts/run_evals.py \
 `--trials 1`은 runner·adapter 점검용 smoke run이다. 기본 3회 결과는 방향성 신호이며, Skill 변경 채택이나 배포 판단에는 5회를 권장한다.
 
 Runner는 시작 전에 실제 Agent 호출 수와 timeout 기준 최대 누적 시간을 출력한다. 현재 22 cases × 3 trials × 2 Harnesses를 모두 실행하면 132회다. 실행은 의도적으로 직렬이다. 병렬 실행은 계정 rate limit과 예상하지 못한 사용량 증가를 만들 수 있어 참조 구현에 포함하지 않았다.
+
+### Windows 네이티브 실행 시 주의사항
+
+Windows 네이티브 환경에서 Eval을 실행할 때는 다음 사항에 주의한다. 아래 처리는 현재 Harness에 반영되어 있으며, adapter나 runner를 수정할 때도 유지해야 한다.
+
+- Codex와 Claude Code CLI는 npm의 `.cmd` 파일로 설치될 수 있으므로 `shutil.which()`로 실제 실행 경로를 해석한다.
+- subprocess와 Git 출력은 한국어를 포함할 수 있으므로 UTF-8로 디코딩한다. Windows 기본 코드페이지인 CP949를 사용하면 JSONL 또는 diff 수집이 깨질 수 있다.
+- Codex prompt는 UTF-8 stdin으로 전달한다. `.cmd`를 통해 한국어 prompt를 argv로 넘기면 문자가 손상될 수 있다.
+- 임시 Git workspace를 삭제할 때는 read-only 파일의 쓰기 권한을 복구한 뒤 삭제를 재시도한다.
+- Codex 실행에는 `--ignore-user-config`를 사용하지 않는다. Codex CLI 0.145.0을 사용한 Windows 검증에서는 이 flag를 추가하면 `--sandbox workspace-write`를 지정해도 실행 context가 `read-only`로 전환됐다.
+- ChatGPT 구독 인증에서 지원하는 모델은 환경에 따라 다를 수 있다. 실행 전에 사용할 수 있는 모델을 확인하고, 필요하면 `--codex-model`로 변경한다.
 
 ### Skill 미적용 baseline
 
@@ -290,7 +301,7 @@ python scripts/run_evals.py \
 
 이 방식은 케이스 간 파일과 대화 문맥의 누적을 막는다. 하지만 임시 Git 저장소가 운영체제 수준 sandbox는 아니다.
 
-- Codex adapter는 `--sandbox workspace-write --ignore-user-config --ignore-rules`를 사용한다. 발동 판정을 위해 session rollout이 필요하므로 `--ephemeral`은 사용하지 않는다.
+- Codex adapter는 `--sandbox workspace-write --ignore-rules`를 사용한다. 발동 판정을 위해 session rollout이 필요하므로 `--ephemeral`은 사용하지 않는다.
 - Claude adapter는 `--dangerously-skip-permissions`를 사용하지 않고 `dontAsk`, project 설정 source, 제한된 built-in tools, 필요한 Git·`rg` allow-list, strict MCP 설정을 사용한다.
 - Runner는 같은 이름의 사용자 전역 Skill(`~/.agents/skills`, 이전 Codex 경로인 `~/.codex/skills`, `~/.claude/skills`)을 발견하면 기본적으로 중단한다. 오염 가능성을 알고도 실행하려면 `--allow-global-skill`을 명시한다.
 - 관리형 정책과 CLI 자체의 내장 동작은 여전히 결과에 영향을 줄 수 있다.
