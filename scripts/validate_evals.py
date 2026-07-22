@@ -39,6 +39,12 @@ def validate_case(case: Any, source: Path, seen_ids: set[str]) -> None:
 
     require_non_empty_string(case.get("query"), "query", source)
 
+    if not isinstance(case.get("requires_isolation"), bool):
+        fail(
+            f"{source}: case '{case_id}' must declare 'requires_isolation' as a boolean. "
+            "Set true when the query can create or modify files in the target repository."
+        )
+
     expected = case.get("expected")
     if not isinstance(expected, dict):
         fail(f"{source}: case '{case_id}' expected must be an object")
@@ -57,7 +63,7 @@ def validate_case(case: Any, source: Path, seen_ids: set[str]) -> None:
         fail(f"{source}: {category} case '{case_id}' must expect a trigger")
 
 
-def validate_file(source: Path) -> int:
+def validate_file(source: Path) -> tuple[int, int]:
     try:
         payload = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -82,7 +88,14 @@ def validate_file(source: Path) -> int:
     if missing:
         fail(f"{source}: missing categories: {', '.join(sorted(missing))}")
 
-    return len(cases)
+    safe_cases = [case for case in cases if not case["requires_isolation"]]
+    if not safe_cases:
+        fail(
+            f"{source}: at least one case must run without isolation so that "
+            "trigger boundaries can be checked in the current repository"
+        )
+
+    return len(cases), len(safe_cases)
 
 
 def main() -> None:
@@ -90,8 +103,13 @@ def main() -> None:
     if not files:
         fail(f"no eval files found in {EVAL_DIR}")
 
-    total = sum(validate_file(source) for source in files)
-    print(f"Validated {total} cases across {len(files)} eval files.")
+    counts = [validate_file(source) for source in files]
+    total = sum(count for count, _ in counts)
+    safe = sum(safe_count for _, safe_count in counts)
+    print(
+        f"Validated {total} cases across {len(files)} eval files. "
+        f"{safe} run without isolation, {total - safe} require an isolated repository."
+    )
 
 
 if __name__ == "__main__":

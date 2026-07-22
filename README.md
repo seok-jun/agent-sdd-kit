@@ -40,19 +40,19 @@ AI coding agent와 함께 명세 기반 개발을 진행하고, 구현이 끝난
 - `non-trigger`: 비슷해 보이지만 Skill이 선택되면 안 되는 요청
 - `procedure`: Skill이 선택된 뒤 반드시 지켜야 하는 절차와 금지 조건
 
-현재 Eval에는 실제 사용 중 발견한 `내 Codex 사용 패턴을 분석해줘` 요청에서 `sdd-doc-scaffold`가 잘못 실행된 사례를 회귀 테스트로 포함했다.
+각 케이스는 `requires_isolation`으로 실행 환경을 함께 선언한다. query가 대상 저장소의 파일을 만들거나 고칠 수 있으면 `true`, 응답만으로 판정할 수 있으면 `false`다. 러너는 이 값만 보고 현재 저장소에서 돌려도 되는 케이스를 고를 수 있다.
 
 ```bash
 python scripts/validate_evals.py
 ```
 
-이 명령은 JSON 형식, 필수 필드, 중복 ID, 카테고리와 `should_trigger`의 정합성을 검사한다. GitHub Actions도 PR과 `main` push에서 같은 검증을 수행한다.
+이 명령은 JSON 형식, 필수 필드, 중복 ID, 카테고리와 `should_trigger`의 정합성, `requires_isolation` 선언 여부를 검사한다. Skill마다 격리 없이 실행할 수 있는 케이스가 최소 하나는 있어야 통과한다. GitHub Actions도 PR과 `main` push에서 같은 검증을 수행한다.
 
 이 저장소는 특정 Agent의 통합 Eval 실행기를 제공하지 않는다. 실제 모델 평가는 `query`를 대상 Agent에 입력한 뒤 `expected.should_trigger`와 `expected.behaviors`를 기준으로 수동 또는 별도 러너에서 채점한다. Skill 설명이나 절차를 바꿀 때는 기존 Eval을 먼저 실행하고, 새로 발견한 실패 사례를 케이스로 추가한다.
 
 ### Eval 실행 안전성
 
-Eval의 `query`는 테스트 전용 모드에서 가상으로 실행되지 않는다. 대상 Agent에 전달하면 일반 사용자 요청과 똑같이 처리되므로 `수정해줘`, `생성해줘`, `갱신해줘` 같은 실행형 문장은 실제 워킹트리를 바꿀 수 있다. 실제로 Non-trigger 확인용 코드 수정 요청을 현재 작업 저장소에서 실행했다가 Java 소스가 수정된 사례가 있었다.
+Eval의 `query`는 테스트 전용 모드에서 가상으로 실행되지 않는다. 대상 Agent에 전달하면 일반 사용자 요청과 똑같이 처리되므로 `수정해줘`, `생성해줘`, `갱신해줘` 같은 실행형 문장은 실제 워킹트리를 바꿀 수 있다. Skill이 실행되지 않은 경우에도 원래 요청에 적힌 조사와 수정은 그대로 수행된다.
 
 Trigger 여부만 확인하는 smoke case는 다음 기준으로 작성한다.
 
@@ -60,6 +60,10 @@ Trigger 여부만 확인하는 smoke case는 다음 기준으로 작성한다.
 - `원인을 분석해줘`처럼 범위가 열려 있는 표현 대신 `아래 코드 조각만 분석해줘`처럼 대상을 고정한다.
 - 저장소 파일을 읽거나 수정하지 말고 결과를 응답으로만 제시하도록 명시한다.
 - 파일 생성이나 코드 수정이 없어도 Trigger 여부를 판정할 수 있는 요청을 우선한다.
+
+`trigger-bounded-grade-question`과 `trigger-bounded-doc-impact`가 이 기준으로 만든 케이스다. 판단 근거를 query 안에 넣어두었기 때문에 현재 저장소에서 바로 실행할 수 있다.
+
+다만 이 방식으로는 Skill이 스스로 diff나 대상 코드를 찾아내는 단계를 검증하지 못한다. 탐색 단계까지 확인하려면 `requires_isolation`이 `true`인 케이스를 격리된 환경에서 실행해야 한다. 특히 `pr-business-docs`의 격리 케이스는 실제 변경사항이 있는 저장소를 전제로 한다.
 
 실제 파일 생성·수정 여부나 금지 절차 준수를 확인하는 case는 통합 테스트로 취급한다. 이런 case는 현재 작업 저장소가 아니라 임시 worktree 또는 복제 저장소에서만 실행하고, 실행 전후의 `git status`와 diff를 비교한다. 테스트 변경을 정리할 때도 `git checkout -- <path>`를 바로 실행하면 기존 작업까지 사라질 수 있으므로, diff를 먼저 확인하고 Eval이 만든 변경만 제거한다.
 
@@ -123,6 +127,8 @@ Skill은 비교 기준, 동작 변경 파일, 진입점, 관련 문서 후보를
 ## 배경
 
 이 저장소는 [Agent SDD 실무 개발](https://seok-jun.github.io/ai-agent-diary/series/agent-sdd/) 시리즈에서 진행한 실험을 재사용 가능한 형태로 정리한 것이다.
+
+`evals/`의 케이스 구성과 실행 안전 규칙은 [Skill 검증을 위한 Eval, 직접 돌려보았다](https://seok-jun.github.io/ai-agent-diary/series/agent-sdd/008-skill-eval-validation/)에서 확인한 내용을 옮긴 것이다.
 
 ## License
 

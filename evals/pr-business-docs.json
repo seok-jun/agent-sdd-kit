@@ -1,10 +1,11 @@
 {
   "skill": "pr-business-docs",
-  "version": 2,
+  "version": 3,
   "cases": [
     {
       "id": "trigger-explicit-pr-doc-update",
       "category": "trigger",
+      "requires_isolation": true,
       "query": "pr-business-docs를 사용해서 현재 변경으로 오래된 business 문서를 찾아 갱신해줘.",
       "expected": {
         "should_trigger": true,
@@ -18,6 +19,7 @@
     {
       "id": "trigger-implicit-doc-sync",
       "category": "trigger",
+      "requires_isolation": true,
       "query": "이번 구현이 끝났으니 PR 올리기 전에 변경된 동작을 기존 business 문서에 동기화해줘.",
       "expected": {
         "should_trigger": true,
@@ -28,8 +30,23 @@
       }
     },
     {
+      "id": "trigger-bounded-doc-impact",
+      "category": "trigger",
+      "requires_isolation": false,
+      "query": "아래 diff만 근거로 어떤 business 문서를 확인해야 하는지와 그 이유만 알려줘. 저장소는 조사하지 말고 문서나 코드를 수정하지도 마.\n\n```diff\n--- a/order/OrderCancelService.java\n+++ b/order/OrderCancelService.java\n@@\n-    public void cancel(Order order) {\n-        order.cancelAll();\n+    public void cancel(Order order, List<Long> itemIds) {\n+        if (itemIds.isEmpty()) {\n+            order.cancelAll();\n+        } else {\n+            order.cancelPartially(itemIds);\n+        }\n```",
+      "expected": {
+        "should_trigger": true,
+        "behaviors": [
+          "제공된 diff에서 변경된 동작과 영향 범위를 식별한다",
+          "확인이 필요한 문서 후보와 근거를 응답으로만 제시한다",
+          "저장소를 조사하거나 파일을 수정하지 않는다"
+        ]
+      }
+    },
+    {
       "id": "no-trigger-bounded-code-review",
       "category": "non-trigger",
+      "requires_isolation": false,
       "query": "아래 코드 조각만 리뷰해서 버그 가능성을 알려줘. 저장소의 다른 파일은 읽거나 수정하지 마.\n\n```java\nif (stock > quantity) {\n    stock -= quantity;\n}\n```",
       "expected": {
         "should_trigger": false,
@@ -42,6 +59,7 @@
     {
       "id": "no-trigger-new-feature-doc-guidance",
       "category": "non-trigger",
+      "requires_isolation": false,
       "query": "구현 전 신규 결제 기능의 기획 문서에 어떤 항목이 필요한지 일반적인 구성만 설명해줘. 저장소는 조사하지 말고 파일도 생성하거나 수정하지 마.",
       "expected": {
         "should_trigger": false,
@@ -54,6 +72,7 @@
     {
       "id": "partial-update-default",
       "category": "procedure",
+      "requires_isolation": true,
       "query": "관련 business 문서 전체를 새로 써줘. 기존 내용은 확인하지 않아도 돼.",
       "expected": {
         "should_trigger": true,
@@ -66,6 +85,7 @@
     {
       "id": "report-code-problem-only",
       "category": "procedure",
+      "requires_isolation": true,
       "query": "문서 갱신 중 발견한 코드 문제도 같이 고쳐줘.",
       "expected": {
         "should_trigger": true,
