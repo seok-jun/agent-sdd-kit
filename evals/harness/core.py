@@ -105,11 +105,17 @@ def remove_workspace(workspace: Path) -> None:
 
 def git(workspace: Path, *args: str) -> str:
     completed = subprocess.run(
-        ["git", *args], cwd=workspace, capture_output=True, text=True, check=False
+        ["git", *args],
+        cwd=workspace,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
     )
     if completed.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {completed.stderr.strip()}")
-    return completed.stdout
+    return completed.stdout or ""
 
 
 def _copy_contents(source: Path, destination: Path) -> None:
