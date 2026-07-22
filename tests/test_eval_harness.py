@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from evals.harness import claude, codex
 from evals.harness.core import (
@@ -15,8 +18,10 @@ from evals.harness.core import (
     evaluate,
     load_check_registry,
     prepare_workspace,
+    run_process,
     skill_trigger_evidence,
     snapshot_workspace,
+    write_artifacts,
 )
 from scripts.run_evals import aggregate, baseline_deltas
 
@@ -35,8 +40,10 @@ class HarnessTests(unittest.TestCase):
     def test_codex_command_is_machine_readable_and_automated(self) -> None:
         command = codex.build_command("test prompt", "gpt-test")
         self.assertEqual(command[:3], ["codex", "exec", "--json"])
-        self.assertIn("--ephemeral", command)
+        self.assertNotIn("--ephemeral", command)
         self.assertIn("workspace-write", command)
+        self.assertIn("--ignore-user-config", command)
+        self.assertIn("--ignore-rules", command)
         self.assertNotIn("--full-auto", command)
         self.assertIn("gpt-test", command)
 
@@ -45,12 +52,17 @@ class HarnessTests(unittest.TestCase):
         self.assertIn("stream-json", command)
         self.assertIn("--no-session-persistence", command)
         self.assertIn("dontAsk", command)
-        self.assertEqual(command[command.index("-p") + 1], "test prompt")
-        allowed = command[command.index("--allowedTools") + 1 :]
-        self.assertEqual(allowed[0:4], ["Skill", "Read", "Glob", "Grep"])
-        self.assertNotIn("test prompt", allowed)
+        allowed = command[command.index("--allowedTools") + 1]
+        self.assertEqual(allowed.split(",")[0:4], ["Skill", "Read", "Glob", "Grep"])
+        self.assertEqual(command[-2:], ["--", "test prompt"])
         self.assertIn("--strict-mcp-config", command)
         self.assertNotIn("--dangerously-skip-permissions", command)
+
+    def test_run_process_closes_stdin(self) -> None:
+        completed = SimpleNamespace(returncode=0, stdout="out", stderr="")
+        with patch("evals.harness.core.subprocess.run", return_value=completed) as mocked:
+            run_process(["agent"], Path("."), 10)
+        self.assertIs(mocked.call_args.kwargs["stdin"], subprocess.DEVNULL)
 
     def test_fixture_baseline_excludes_skill_and_keeps_overlay_diff(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -75,6 +87,36 @@ class HarnessTests(unittest.TestCase):
             self.assertIn("agent-output.txt", paths)
             self.assertIn("+created", diff)
 
+    def test_prepare_workspace_copies_external_skill_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "skills/demo").mkdir(parents=True)
+            (root / "shared.md").write_text("shared\n", encoding="utf-8")
+            (root / "skills/demo/SKILL.md").write_text(
+                "---\nname: demo\ndescription: demo\n---\n[shared](../../shared.md)\n",
+                encoding="utf-8",
+            )
+            fixture = root / "fixture/base"
+            fixture.mkdir(parents=True)
+            workspace = prepare_workspace(root, "demo", fixture.parent, "codex")
+            self.assertEqual(
+                (workspace / ".agents/shared.md").read_text(encoding="utf-8"),
+                "shared\n",
+            )
+
+    def test_prepare_workspace_rejects_missing_skill_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "skills/demo").mkdir(parents=True)
+            (root / "skills/demo/SKILL.md").write_text(
+                "---\nname: demo\ndescription: demo\n---\n[missing](../../missing.md)\n",
+                encoding="utf-8",
+            )
+            fixture = root / "fixture/base"
+            fixture.mkdir(parents=True)
+            with self.assertRaises(FileNotFoundError):
+                prepare_workspace(root, "demo", fixture.parent, "codex")
+
     def test_common_checks_use_tool_events_not_prompt_text(self) -> None:
         context = RunContext(
             skill="demo",
@@ -88,7 +130,7 @@ class HarnessTests(unittest.TestCase):
         result = evaluate(context, common_registry())
         self.assertTrue(result["passed"])
 
-    def test_trigger_detector_handles_windows_paths_and_skill_tool(self) -> None:
+    def test_trigger_detector_uses_only_normalized_activation_events(self) -> None:
         windows = RunContext(
             skill="demo",
             case={"expected_checks": ["skill_triggered"]},
@@ -100,17 +142,103 @@ class HarnessTests(unittest.TestCase):
             changed_paths=[],
             diff="",
         )
-        self.assertIsNotNone(skill_trigger_evidence(windows))
+        self.assertIsNone(skill_trigger_evidence(windows))
         skill_tool = RunContext(
             skill="demo",
             case={"expected_checks": ["skill_triggered"]},
             harness="claude",
             workspace=Path("."),
-            agent=AgentResult([], 0, "", "", "", [{"name": "Skill", "input": {"command": "demo"}}], {}),
+            agent=AgentResult([], 0, "", "", "", [{"name": "Skill", "input": {"skill": "demo"}}], {}),
             changed_paths=[],
             diff="",
         )
         self.assertIsNotNone(skill_trigger_evidence(skill_tool))
+
+    def test_claude_parser_joins_messages_and_keeps_diagnostics(self) -> None:
+        stdout = "\n".join(
+            json.dumps(event)
+            for event in [
+                {"type": "system", "subtype": "init", "skills": ["demo"]},
+                {"type": "assistant", "message": {"content": [
+                    {"type": "text", "text": "first"},
+                    {"type": "tool_use", "name": "Skill", "input": {"skill": "demo"}},
+                ]}},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": "second"}]}},
+                {"type": "rate_limit_event", "rate_limit_info": {"status": "allowed"}},
+                {"type": "result", "result": "last only", "usage": {"input_tokens": 2}, "permission_denials": [{"tool": "WebFetch"}]},
+            ]
+        )
+        response, trace, usage, denials, rate_events, errors = claude._parse(stdout)
+        self.assertEqual(response, "first\n\nsecond")
+        self.assertEqual(trace[0]["input"]["skill"], "demo")
+        self.assertEqual(usage["input_tokens"], 2)
+        self.assertEqual(denials, [{"tool": "WebFetch"}])
+        self.assertEqual(len(rate_events), 1)
+        self.assertEqual(errors, [])
+
+    def test_claude_parser_rejects_non_allowed_rate_limit(self) -> None:
+        event = {"type": "rate_limit_event", "rate_limit_info": {"status": "rejected"}}
+        *_, errors = claude._parse(json.dumps(event))
+        self.assertTrue(errors)
+
+    def test_codex_parser_joins_messages_and_reads_rollout_activation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            sessions = Path(temp) / "sessions/2026/07/22"
+            sessions.mkdir(parents=True)
+            thread_id = "019-demo-thread"
+            rollout = sessions / f"rollout-2026-{thread_id}.jsonl"
+            rollout.write_text(
+                "\n".join(
+                    [
+                        json.dumps({"type": "world_state", "payload": {"host_skills": [{"name": "not-activation"}]}}),
+                        json.dumps({"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "<skill><name>demo</name><path>C:\\\\demo</path></skill>"}]}}),
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            stdout = "\n".join(
+                [
+                    json.dumps({"type": "thread.started", "thread_id": thread_id}),
+                    json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "first"}}),
+                    json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "second"}}),
+                    json.dumps({"type": "turn.completed", "usage": {"input_tokens": 3}}),
+                ]
+            )
+            response, trace, usage, raw_rollout, errors = codex._parse(
+                stdout, "demo", Path(temp) / "sessions"
+            )
+            self.assertEqual(response, "first\n\nsecond")
+            self.assertEqual(usage["input_tokens"], 3)
+            self.assertIn("response_item", raw_rollout)
+            self.assertEqual(trace[-1]["input"]["skill"], "demo")
+            self.assertEqual(errors, [])
+
+    def test_codex_rollout_missing_is_adapter_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            stdout = json.dumps({"type": "thread.started", "thread_id": "missing"})
+            *_, errors = codex._parse(stdout, "demo", Path(temp))
+            self.assertTrue(errors)
+
+    def test_diagnostic_artifacts_are_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = AgentResult(
+                [],
+                0,
+                "trace\n",
+                "",
+                "response",
+                [],
+                {},
+                permission_denials=[{"tool": "WebFetch"}],
+                rate_limit_events=[{"type": "rate_limit_event"}],
+                rollout="rollout\n",
+            )
+            context = RunContext("demo", {"id": "case"}, "codex", root, agent, [], "")
+            write_artifacts(root / "artifacts", context, {"passed": True, "checks": {}})
+            self.assertTrue((root / "artifacts/codex-rollout.jsonl").is_file())
+            self.assertTrue((root / "artifacts/permission-denials.json").is_file())
+            self.assertTrue((root / "artifacts/rate-limit-events.json").is_file())
 
     def test_confirmation_check_rejects_incidental_korean_word(self) -> None:
         context = RunContext(
@@ -134,7 +262,7 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(len(deltas), 1)
         self.assertEqual(deltas[0]["delta"], 0.5)
 
-    def test_repository_discovery_uses_tool_events_without_ls_substring_false_positive(self) -> None:
+    def test_repository_discovery_is_harness_tool_based(self) -> None:
         registry = load_check_registry(Path("evals/sdd-doc-scaffold/checks.py"))
         safe = RunContext(
             skill="demo",
@@ -147,13 +275,13 @@ class HarnessTests(unittest.TestCase):
                 "",
                 "",
                 "",
-                [{"item": {"type": "command_execution", "command": "printf 'details complete'"}}],
+                [{"item": {"type": "command_execution", "command": "Get-ChildItem"}}],
                 {},
             ),
             changed_paths=[],
             diff="",
         )
-        self.assertTrue(evaluate(safe, registry)["passed"])
+        self.assertFalse(evaluate(safe, registry)["passed"])
         discovery = RunContext(
             skill="demo",
             case={"expected_checks": ["no_repository_discovery"]},

@@ -25,8 +25,7 @@ ALLOWED_TOOLS = [
 def build_command(prompt: str, model: str | None = None) -> list[str]:
     command = [
         "claude",
-        "-p",
-        prompt,
+        "--print",
         "--output-format",
         "stream-json",
         "--verbose",
@@ -39,17 +38,31 @@ def build_command(prompt: str, model: str | None = None) -> list[str]:
         "--tools",
         "Skill,Read,Glob,Grep,Edit,Write,Bash",
         "--allowedTools",
-        *ALLOWED_TOOLS,
+        ",".join(ALLOWED_TOOLS),
     ]
     if model:
         command.extend(["--model", model])
+    command.extend(["--", prompt])
     return command
 
 
-def _parse(stdout: str) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
-    response = ""
+def _parse(
+    stdout: str,
+) -> tuple[
+    str,
+    list[dict[str, Any]],
+    dict[str, Any],
+    list[Any],
+    list[dict[str, Any]],
+    list[str],
+]:
+    response_parts: list[str] = []
+    result_response = ""
     tool_trace: list[dict[str, Any]] = []
     usage: dict[str, Any] = {}
+    permission_denials: list[Any] = []
+    rate_limit_events: list[dict[str, Any]] = []
+    adapter_errors: list[str] = []
     for line in stdout.splitlines():
         if not line.strip():
             continue
@@ -57,11 +70,20 @@ def _parse(stdout: str) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if event.get("type") == "rate_limit_event":
+            rate_limit_events.append(event)
+            info = event.get("rate_limit_info")
+            status = info.get("status") if isinstance(info, dict) else event.get("status")
+            if status != "allowed":
+                adapter_errors.append(f"Claude rate limit status is {status!r}")
         if event.get("type") == "result":
             if isinstance(event.get("result"), str):
-                response = event["result"]
+                result_response = event["result"]
             if isinstance(event.get("usage"), dict):
                 usage = event["usage"]
+            denials = event.get("permission_denials")
+            if isinstance(denials, list):
+                permission_denials.extend(denials)
         message = event.get("message")
         if not isinstance(message, dict):
             continue
@@ -69,18 +91,41 @@ def _parse(stdout: str) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
             if not isinstance(block, dict):
                 continue
             if block.get("type") == "text" and event.get("type") == "assistant":
-                response = block.get("text", response)
+                text = block.get("text")
+                if isinstance(text, str) and text:
+                    response_parts.append(text)
             elif block.get("type") == "tool_use":
                 tool_trace.append(
                     {"name": block.get("name"), "input": block.get("input", {})}
                 )
-    return response, tool_trace, usage
+    response = "\n\n".join(response_parts) if response_parts else result_response
+    return (
+        response,
+        tool_trace,
+        usage,
+        permission_denials,
+        rate_limit_events,
+        adapter_errors,
+    )
 
 
-def run(prompt: str, workspace: Path, timeout: int, model: str | None = None) -> AgentResult:
+def run(
+    prompt: str,
+    workspace: Path,
+    timeout: int,
+    model: str | None = None,
+    skill: str | None = None,
+) -> AgentResult:
     command = build_command(prompt, model)
     exit_code, stdout, stderr, timed_out = run_process(command, workspace, timeout)
-    response, tool_trace, usage = _parse(stdout)
+    (
+        response,
+        tool_trace,
+        usage,
+        permission_denials,
+        rate_limit_events,
+        adapter_errors,
+    ) = _parse(stdout)
     return AgentResult(
         command=command,
         exit_code=exit_code,
@@ -90,4 +135,7 @@ def run(prompt: str, workspace: Path, timeout: int, model: str | None = None) ->
         tool_trace=tool_trace,
         usage=usage,
         timed_out=timed_out,
+        adapter_errors=adapter_errors,
+        permission_denials=permission_denials,
+        rate_limit_events=rate_limit_events,
     )

@@ -8,9 +8,10 @@ import re
 import shutil
 import subprocess
 import tempfile
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import unquote, urlparse
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,10 @@ class AgentResult:
     tool_trace: list[dict[str, Any]]
     usage: dict[str, Any]
     timed_out: bool = False
+    adapter_errors: list[str] = field(default_factory=list)
+    permission_denials: list[Any] = field(default_factory=list)
+    rate_limit_events: list[dict[str, Any]] = field(default_factory=list)
+    rollout: str = ""
 
 
 @dataclass
@@ -51,6 +56,7 @@ def run_process(command: list[str], cwd: Path, timeout: int) -> tuple[int, str, 
             command,
             cwd=cwd,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             timeout=timeout,
             check=False,
@@ -85,6 +91,54 @@ def _copy_contents(source: Path, destination: Path) -> None:
             shutil.copy2(item, target)
 
 
+MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(\s*(<[^>]+>|[^)\s]+)")
+
+
+def _copy_skill_with_references(repo_root: Path, source_skill: Path, target_skill: Path) -> None:
+    """Copy a Skill and every local file linked directly from SKILL.md.
+
+    Relative links keep the same relationship to the installed SKILL.md. This
+    supports repositories that keep shared references outside a Skill folder,
+    while rejecting missing files and paths that escape the repository or the
+    disposable eval workspace.
+    """
+
+    shutil.copytree(source_skill, target_skill)
+    source_manifest = source_skill / "SKILL.md"
+    target_manifest = target_skill / "SKILL.md"
+    repo_root = repo_root.resolve()
+    workspace = target_skill.parents[2].resolve()
+
+    for match in MARKDOWN_LINK.finditer(source_manifest.read_text(encoding="utf-8")):
+        raw_target = match.group(1).strip("<>")
+        if re.match(r"^[A-Za-z]:[\\/]", raw_target):
+            raise ValueError(f"Absolute Skill reference is not portable: {raw_target}")
+        parsed = urlparse(raw_target)
+        if parsed.scheme or raw_target.startswith("#"):
+            continue
+        path_text = unquote(parsed.path)
+        if not path_text:
+            continue
+        if Path(path_text).is_absolute():
+            raise ValueError(f"Absolute Skill reference is not portable: {raw_target}")
+
+        source_reference = (source_manifest.parent / path_text).resolve()
+        try:
+            source_reference.relative_to(repo_root)
+        except ValueError as exc:
+            raise ValueError(f"Skill reference escapes repository: {raw_target}") from exc
+        if not source_reference.is_file():
+            raise FileNotFoundError(f"Skill reference not found: {raw_target} -> {source_reference}")
+
+        target_reference = (target_manifest.parent / path_text).resolve()
+        try:
+            target_reference.relative_to(workspace)
+        except ValueError as exc:
+            raise ValueError(f"Installed Skill reference escapes workspace: {raw_target}") from exc
+        target_reference.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_reference, target_reference)
+
+
 def prepare_workspace(
     repo_root: Path,
     skill: str,
@@ -102,7 +156,14 @@ def prepare_workspace(
         if not (source_skill / "SKILL.md").is_file():
             raise FileNotFoundError(f"Skill not found: {source_skill}")
         skill_home = ".agents/skills" if harness == "codex" else ".claude/skills"
-        shutil.copytree(source_skill, workspace / skill_home / skill)
+        try:
+            _copy_skill_with_references(
+                repo_root, source_skill, workspace / skill_home / skill
+            )
+        except Exception:
+            if destination is None and workspace.name.startswith("agent-sdd-eval-"):
+                shutil.rmtree(workspace, ignore_errors=True)
+            raise
 
     git(workspace, "init", "-q", "-b", "main")
     git(workspace, "config", "user.name", "Skill Eval")
@@ -181,6 +242,20 @@ def write_artifacts(
     (artifact_dir / "stderr.txt").write_text(context.agent.stderr, encoding="utf-8")
     (artifact_dir / "response.md").write_text(context.agent.response, encoding="utf-8")
     (artifact_dir / "workspace.diff").write_text(context.diff, encoding="utf-8")
+    if context.agent.rollout:
+        (artifact_dir / "codex-rollout.jsonl").write_text(
+            context.agent.rollout, encoding="utf-8"
+        )
+    if context.agent.permission_denials:
+        (artifact_dir / "permission-denials.json").write_text(
+            json.dumps(context.agent.permission_denials, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    if context.agent.rate_limit_events:
+        (artifact_dir / "rate-limit-events.json").write_text(
+            json.dumps(context.agent.rate_limit_events, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
     payload = {
         "skill": context.skill,
         "case_id": context.case["id"],
@@ -189,6 +264,9 @@ def write_artifacts(
         "exit_code": context.agent.exit_code,
         "timed_out": context.agent.timed_out,
         "usage": context.agent.usage,
+        "adapter_errors": context.agent.adapter_errors,
+        "permission_denials": context.agent.permission_denials,
+        "rate_limit_events": context.agent.rate_limit_events,
         "changed_paths": context.changed_paths,
         **(metadata or {}),
         **evaluation,
@@ -206,52 +284,20 @@ def project_paths(paths: list[str]) -> list[str]:
     ]
 
 
-def tool_trace_text(context: RunContext) -> str:
-    return json.dumps(context.agent.tool_trace, ensure_ascii=False).lower()
-
-
-def _strings(value: Any) -> list[str]:
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, dict):
-        return [item for child in value.values() for item in _strings(child)]
-    if isinstance(value, list):
-        return [item for child in value for item in _strings(child)]
-    return []
-
-
-def _normal_path(value: str) -> str:
-    return re.sub(r"/+", "/", value.replace("\\", "/")).lower()
-
-
-def is_skill_path(value: str) -> bool:
-    normalized = _normal_path(value)
-    return any(
-        marker in normalized
-        for marker in (".agents/skills/", ".codex/skills/", ".claude/skills/")
-    )
-
-
 def skill_trigger_evidence(context: RunContext) -> str | None:
-    """Return structured evidence that the target Skill was actually loaded."""
+    """Return adapter-normalized evidence that the target Skill was invoked."""
 
     skill = context.skill.lower()
-    skill_file = f"/{skill}/skill.md"
     for event in context.agent.tool_trace:
         if not isinstance(event, dict):
             continue
         name = str(event.get("name", "")).lower()
         tool_input = event.get("input", {})
-        if name == "skill":
-            for value in _strings(tool_input):
-                candidate = value.strip().lower().lstrip("$/")
-                if candidate == skill or candidate.split()[0:1] == [skill]:
-                    return f"Skill tool input={value!r}"
-
-        for value in _strings(event):
-            normalized = _normal_path(value)
-            if skill_file in f"/{normalized.lstrip('/')}" and is_skill_path(normalized):
-                return f"SKILL.md path={value!r}"
+        if name != "skill" or not isinstance(tool_input, dict):
+            continue
+        value = tool_input.get("skill")
+        if isinstance(value, str) and value.strip().lower().lstrip("$/") == skill:
+            return f"Skill activation input.skill={value!r}"
     return None
 
 
